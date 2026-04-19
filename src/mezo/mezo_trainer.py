@@ -1,21 +1,41 @@
+"""Код был адаптирован отсюда https://github.com/princeton-nlp/MeZO/blob/main/large_models/trainer.py Нужна была поддержка transformers>4.5"""
+
 import time
 
 import numpy as np
 import torch
 from tqdm.auto import tqdm
-from transformers import Trainer
+from transformers import Trainer, TrainingArguments
 from transformers.trainer_utils import TrainOutput, speed_metrics
 
 
 class MeZoTrainer(Trainer):
+    """
+    Zero-Order (MeZO) Trainer для fine-tuning LLM без обратного распространения.
+
+    Адаптировано из https://github.com/princeton-nlp/MeZO/blob/main/large_models/trainer.py
+    Добавлена поддержка transformers >= 4.5.
+
+    MeZO оценивает градиенты методом конечных разностей с помощью двух forward-проходов,
+    используя случайные возмущения параметров. Это позволяет обучать модели без
+    сохранения графов вычислений и обратного распространения, что значительно
+    экономит память GPU.
+
+    Args:
+        args (TrainingArguments): Аргументы тренировки. Должны содержать:
+            - zo_eps (float): Масштаб возмущения для zeroth-order (по умолчанию 1e-3).
+            - weight_decay (float): Коэффициент регуляризации для не-bias/не-norm параметров.
+        Другие параметры передаются родительскому классу Trainer.
+
+    Note:
+        В текущей реализации gradient_accumulation_steps не поддерживается
+        (всегда равен 1). Оптимизация выполняется после каждого батча."""
+
     def _inner_training_loop(
         self,
-        batch_size=None,
-        args=None,
-        resume_from_checkpoint=None,
-        trial=None,
-        ignore_keys_for_eval=None,
-    ):
+        batch_size: int | None = None,
+        args: TrainingArguments | None = None,
+    ) -> TrainOutput:
         self._train_batch_size = batch_size
         train_dataloader = self.get_train_dataloader()
         if hasattr(train_dataloader, "__len__"):

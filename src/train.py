@@ -13,7 +13,6 @@ from transformers import (
     AutoTokenizer,
     DataCollatorForLanguageModeling,
     HfArgumentParser,
-    Qwen2Config,
     Trainer,
     TrainingArguments,
     set_seed,
@@ -24,6 +23,8 @@ from optimizers.muon import Muon
 
 
 class OptimizerNames(str, Enum):
+    """Названия оптимизаторов используемых в экспериментах."""
+
     adamw = "adamw"
     muon = "muon"
     hybrid_muon = "hybrid_muon"
@@ -32,7 +33,7 @@ class OptimizerNames(str, Enum):
 
 @dataclass
 class ScriptArguments:
-    """Аргументы, специфичные для скрипта (оптимизатор)."""
+    """Аргументы, специфичные для скрипта."""
 
     optimizer: OptimizerNames = field(
         default=OptimizerNames.adamw, metadata={"help": "Тип оптимизатора"}
@@ -67,6 +68,8 @@ class DataArguments:
 
 
 class CustomTrainingArguments(TrainingArguments):
+    """Нужен для переопределения дефолтных аргументов в остальном тот же TrainingArguments"""
+
     warmup_ratio: Optional[float] = field(
         default=0.0,
         metadata={"help": "Warmap ratio"},
@@ -164,40 +167,20 @@ def build_optimizer(name: str, model, lr: float, wd: float) -> torch.optim.Optim
     )
 
 
-def build_model_config(
-    model_args: ModelArguments, tokenizer, max_seq_len: int
-) -> Qwen2Config:
-    """Создаёт конфигурацию модели Qwen2."""
-    return Qwen2Config(
-        vocab_size=tokenizer.vocab_size,
-        hidden_size=model_args.hidden_size,
-        intermediate_size=model_args.intermediate_size,
-        num_hidden_layers=model_args.num_hidden_layers,
-        num_attention_heads=model_args.num_attention_heads,
-        num_key_value_heads=model_args.num_key_value_heads,
-        max_position_embeddings=max_seq_len + 1,
-        hidden_act="silu",
-        rms_norm_eps=1e-6,
-        tie_word_embeddings=True,
-    )
-
-
 class TrainerWithMuonOptimizer(Trainer):
+    """Trainer для работы с Muon."""
+
+    def __init__(self, optimizer_name, *args, **kwargs):
+        self.optimizer_name = optimizer_name
+        super().__init__(*args, **kwargs)
+
     def create_optimizer(self):
-
-        if hasattr(self, "optimizer") and self.optimizer is not None:
-            return self.optimizer
-
-        print("✅ USING MUON OPTIMIZER")
-
         self.optimizer = build_optimizer(
-            "muon",
+            self.optimizer_name,
             self.model,
             lr=self.args.learning_rate,
             wd=self.args.weight_decay,
         )
-
-        return self.optimizer
 
 
 def build_task_name(
@@ -252,9 +235,6 @@ def train(
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    # config = build_model_config(model_args, tokenizer, data_args.seq_length)
-    # model = Qwen2ForCausalLM(model_args.model_name).to(device)
-
     model = AutoModelForCausalLM.from_pretrained(model_args.model_name).to(device)
 
     train_dataset = build_dataset(data_args, tokenizer)
@@ -300,10 +280,5 @@ if __name__ == "__main__":
     model_args, data_args, script_args, training_args = (
         parser.parse_args_into_dataclasses()
     )
-
-    # logger.info(f"Model args: {model_args}")
-    # logger.info(f"Data args: {data_args}")
-    # logger.info(f"Optimizer args: {opt_args}")
-    # logger.info(f"Training args: {training_args}")
 
     train(model_args, data_args, script_args, training_args)
