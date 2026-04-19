@@ -9,14 +9,13 @@ import torch
 from clearml import Task
 from datasets import load_dataset
 from transformers import (
+    AutoModelForCausalLM,
     AutoTokenizer,
     DataCollatorForLanguageModeling,
     HfArgumentParser,
     Qwen2Config,
-    Qwen2ForCausalLM,
     Trainer,
     TrainingArguments,
-    get_cosine_schedule_with_warmup,
     set_seed,
 )
 
@@ -48,21 +47,6 @@ class ModelArguments:
         default="Qwen/Qwen2.5-0.5B",
         metadata={"help": "Имя модели или путь к ней для загрузки токенизатора"},
     )
-    hidden_size: int = field(
-        default=1024, metadata={"help": "Размер скрытого состояния"}
-    )
-    intermediate_size: int = field(
-        default=4864, metadata={"help": "Размер промежуточного слоя FFN"}
-    )
-    num_hidden_layers: int = field(
-        default=12, metadata={"help": "Количество слоёв Transformer"}
-    )
-    num_attention_heads: int = field(
-        default=16, metadata={"help": "Количество голов внимания"}
-    )
-    num_key_value_heads: int = field(
-        default=16, metadata={"help": "Количество голов для KV-кэша"}
-    )
 
 
 @dataclass
@@ -82,6 +66,13 @@ class DataArguments:
     )
 
 
+class CustomTrainingArguments(TrainingArguments):
+    warmup_ratio: Optional[float] = field(
+        default=0.0,
+        metadata={"help": "Warmap ratio"},
+    )
+
+
 def setup_logging() -> None:
     """Настраивает базовое логирование."""
     logging.basicConfig(
@@ -91,13 +82,20 @@ def setup_logging() -> None:
     )
 
 
-def build_dataset(dataset_name, tokenizer, seq_len):
-
+def build_dataset(data_args: DataArguments, tokenizer) -> torch.utils.data.Dataset:
+    """Загружает и подготавливает датасет для языкового моделирования."""
     name2path = {
         "openwebtext-100k": "Elriggs/openwebtext-100k",
     }
+    if data_args.dataset_name not in name2path:
+        raise ValueError(
+            f"Неизвестный датасет: {data_args.dataset_name}. Доступны: {list(name2path.keys())}"
+        )
 
-    dataset = load_dataset(name2path[dataset_name], split="train")
+    dataset = load_dataset(name2path[data_args.dataset_name], split="train")
+
+    if data_args.train_subset_size is not None:
+        dataset = dataset.select(range(min(data_args.train_subset_size, len(dataset))))
 
     dataset = dataset.select(range(10_000))
 
@@ -109,12 +107,12 @@ def build_dataset(dataset_name, tokenizer, seq_len):
     def group_texts(examples):
         concatenated = {k: sum(examples[k], []) for k in examples.keys()}
         total_length = len(concatenated["input_ids"])
-        total_length = (total_length // seq_len) * seq_len
+        total_length = (total_length // data_args.seq_length) * data_args.seq_length
 
         result = {
             k: [
-                concatenated[k][i : i + seq_len]
-                for i in range(0, total_length, seq_len)
+                concatenated[k][i : i + data_args.seq_length]
+                for i in range(0, total_length, data_args.seq_length)
             ]
             for k in concatenated.keys()
         }
@@ -185,30 +183,21 @@ def build_model_config(
 
 
 class TrainerWithMuonOptimizer(Trainer):
-    def __init__(self, optimizer_name: str, *args, **kwargs):
-        self.optimizer_name = optimizer_name
-        super().__init__(*args, **kwargs)
+    def create_optimizer(self):
 
-    def create_optimizer_and_scheduler(self, num_training_steps: int):
+        if hasattr(self, "optimizer") and self.optimizer is not None:
+            return self.optimizer
 
-        if self.optimizer_name == OptimizerNames.mezo:
-            return  # MeZO uses its own trainer
+        print("✅ USING MUON OPTIMIZER")
 
-        optimizer = build_optimizer(
-            self.optimizer_name,
+        self.optimizer = build_optimizer(
+            "muon",
             self.model,
-            self.args.learning_rate,
-            self.args.weight_decay,
+            lr=self.args.learning_rate,
+            wd=self.args.weight_decay,
         )
 
-        scheduler = get_cosine_schedule_with_warmup(
-            optimizer,
-            num_warmup_steps=int(self.args.warmup_ratio * num_training_steps),
-            num_training_steps=num_training_steps,
-        )
-
-        self.optimizer = optimizer
-        self.lr_scheduler = scheduler
+        return self.optimizer
 
 
 def build_task_name(
@@ -263,32 +252,14 @@ def train(
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    config = build_model_config(model_args, tokenizer, data_args.seq_length)
-    model = Qwen2ForCausalLM(config).to(device)
+    # config = build_model_config(model_args, tokenizer, data_args.seq_length)
+    # model = Qwen2ForCausalLM(model_args.model_name).to(device)
 
-    model = Qwen2ForCausalLM(config).to(device)
+    model = AutoModelForCausalLM.from_pretrained(model_args.model_name).to(device)
 
-    train_dataset = build_dataset(data_args, tokenizer, data_args.seq_length)
+    train_dataset = build_dataset(data_args, tokenizer)
 
     data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
-
-    training_args = TrainingArguments(
-        output_dir=training_args.output_dir,
-        per_device_train_batch_size=training_args.batch_size,
-        gradient_accumulation_steps=training_args.grad_accumulation_steps,
-        num_train_epochs=training_args.num_epochs,
-        learning_rate=training_args.learning_rate,
-        weight_decay=training_args.weight_decay,
-        warmup_ratio=training_args.warmup_ratio,
-        lr_scheduler_type="cosine",
-        logging_steps=training_args.log_every_steps,
-        save_strategy="epoch",
-        fp16=training_args.use_fp16 and torch.cuda.is_available(),
-        dataloader_num_workers=2,
-        report_to=["tensorboard", "clearml"],
-        remove_unused_columns=False,
-        **{k: v for k, v in training_args.to_dict().items() if v is not None},
-    )
 
     if script_args.optimizer == OptimizerNames.mezo:
         trainer = MeZoTrainer(
@@ -297,9 +268,16 @@ def train(
             train_dataset=train_dataset,
             data_collator=data_collator,
         )
-    else:
+    elif script_args.optimizer == OptimizerNames.muon:
         trainer = TrainerWithMuonOptimizer(
             optimizer_name=script_args.optimizer,
+            model=model,
+            args=training_args,
+            train_dataset=train_dataset,
+            data_collator=data_collator,
+        )
+    else:
+        trainer = Trainer(
             model=model,
             args=training_args,
             train_dataset=train_dataset,
@@ -316,19 +294,16 @@ if __name__ == "__main__":
     logger = logging.getLogger(__name__)
 
     parser = HfArgumentParser(
-        [ModelArguments, DataArguments, ScriptArguments, TrainingArguments]
+        [ModelArguments, DataArguments, ScriptArguments, CustomTrainingArguments]
     )
-    try:
-        model_args, data_args, opt_args, training_args = (
-            parser.parse_args_into_dataclasses()
-        )
-    except SystemExit:
-        parser.print_help()
-        exit(0)
 
-    logger.info(f"Model args: {model_args}")
-    logger.info(f"Data args: {data_args}")
-    logger.info(f"Optimizer args: {opt_args}")
-    logger.info(f"Training args: {training_args}")
+    model_args, data_args, script_args, training_args = (
+        parser.parse_args_into_dataclasses()
+    )
 
-    train(model_args, data_args, opt_args, training_args)
+    # logger.info(f"Model args: {model_args}")
+    # logger.info(f"Data args: {data_args}")
+    # logger.info(f"Optimizer args: {opt_args}")
+    # logger.info(f"Training args: {training_args}")
+
+    train(model_args, data_args, script_args, training_args)
