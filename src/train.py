@@ -32,6 +32,15 @@ class OptimizerNames(str, Enum):
 
 
 @dataclass
+class ScriptArguments:
+    """Аргументы, специфичные для скрипта (оптимизатор)."""
+
+    optimizer: OptimizerNames = field(
+        default=OptimizerNames.adamw, metadata={"help": "Тип оптимизатора"}
+    )
+
+
+@dataclass
 class ModelArguments:
     """Аргументы, связанные с моделью и токенизатором."""
 
@@ -70,37 +79,6 @@ class DataArguments:
     )
     seq_length: int = field(
         default=512, metadata={"help": "Длина последовательности для группировки"}
-    )
-
-
-@dataclass
-class OptimizerArguments:
-    """Аргументы оптимизатора и обучения."""
-
-    optimizer: OptimizerNames = field(
-        default=OptimizerNames.adamw, metadata={"help": "Тип оптимизатора"}
-    )
-    learning_rate: float = field(
-        default=5e-5, metadata={"help": "Начальная скорость обучения"}
-    )
-    weight_decay: float = field(
-        default=0.01, metadata={"help": "Коэффициент регуляризации L2"}
-    )
-    warmup_ratio: float = field(default=0.03, metadata={"help": "Доля warmup-шагов"})
-    batch_size: int = field(default=2, metadata={"help": "Размер батча на устройство"})
-    grad_accumulation_steps: int = field(
-        default=8, metadata={"help": "Шаги накопления градиента"}
-    )
-    num_epochs: int = field(default=1, metadata={"help": "Количество эпох обучения"})
-    use_fp16: bool = field(
-        default=True, metadata={"help": "Использовать mixed precision (FP16)"}
-    )
-    seed: int = field(default=42, metadata={"help": "Сид для воспроизводимости"})
-    log_every_steps: int = field(
-        default=10, metadata={"help": "Логировать каждые N шагов"}
-    )
-    output_dir: str = field(
-        default="./outputs", metadata={"help": "Директория для сохранения"}
     )
 
 
@@ -233,26 +211,36 @@ class TrainerWithMuonOptimizer(Trainer):
         self.lr_scheduler = scheduler
 
 
-def build_task_name(args):
+def build_task_name(
+    optimizer_name: OptimizerNames,
+    training_args: TrainingArguments,
+    data_args: DataArguments,
+) -> str:
+    """Формирует имя задачи для ClearML."""
     date = datetime.now().strftime("%m%d_%H%M")
     return (
-        f"{args.optimizer}"
-        f"_lr{args.lr:.1e}"
-        f"_bs{args.batch_size}"
-        f"_wd{args.wd}"
-        f"_sl{args.seq_len}"
+        f"{optimizer_name}"
+        f"_lr{training_args.learning_rate:.1e}"
+        f"_bs{training_args.per_device_train_batch_size}"
+        f"_wd{training_args.weight_decay}"
+        f"_sl{data_args.seq_length}"
         f"_{date}"
     )
 
 
-def init_clearml_task(args):
+def init_clearml_task(
+    optimizer_name: OptimizerNames,
+    training_args: TrainingArguments,
+    data_args: DataArguments,
+) -> Task:
+    """Инициализирует задачу ClearML."""
     task = Task.init(
         project_name="Huawei-research",
-        task_name=build_task_name(args),
+        task_name=build_task_name(optimizer_name, training_args, data_args),
         tags=[
-            args.optimizer,
-            f"lr={args.lr:.1e}",
-            f"bs={args.batch_size}",
+            optimizer_name,
+            f"lr={training_args.learning_rate:.1e}",
+            f"bs={training_args.per_device_train_batch_size}",
         ],
     )
     return task
@@ -261,15 +249,15 @@ def init_clearml_task(args):
 def train(
     model_args: ModelArguments,
     data_args: DataArguments,
-    opt_args: OptimizerArguments,
+    script_args: ScriptArguments,
     training_args: TrainingArguments,
 ):
 
-    init_clearml_task(opt_args, data_args)
+    init_clearml_task(script_args.optimizer, training_args, data_args)
 
-    set_seed(opt_args.seed)
+    set_seed(training_args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    os.makedirs(opt_args.output_dir, exist_ok=True)
+    os.makedirs(training_args.output_dir, exist_ok=True)
 
     tokenizer = AutoTokenizer.from_pretrained(model_args.model_name)
     if tokenizer.pad_token is None:
@@ -285,24 +273,24 @@ def train(
     data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
 
     training_args = TrainingArguments(
-        output_dir=opt_args.output_dir,
-        per_device_train_batch_size=opt_args.batch_size,
-        gradient_accumulation_steps=opt_args.grad_accumulation_steps,
-        num_train_epochs=opt_args.num_epochs,
-        learning_rate=opt_args.learning_rate,
-        weight_decay=opt_args.weight_decay,
-        warmup_ratio=opt_args.warmup_ratio,
+        output_dir=training_args.output_dir,
+        per_device_train_batch_size=training_args.batch_size,
+        gradient_accumulation_steps=training_args.grad_accumulation_steps,
+        num_train_epochs=training_args.num_epochs,
+        learning_rate=training_args.learning_rate,
+        weight_decay=training_args.weight_decay,
+        warmup_ratio=training_args.warmup_ratio,
         lr_scheduler_type="cosine",
-        logging_steps=opt_args.log_every_steps,
+        logging_steps=training_args.log_every_steps,
         save_strategy="epoch",
-        fp16=opt_args.use_fp16 and torch.cuda.is_available(),
+        fp16=training_args.use_fp16 and torch.cuda.is_available(),
         dataloader_num_workers=2,
         report_to=["tensorboard", "clearml"],
         remove_unused_columns=False,
         **{k: v for k, v in training_args.to_dict().items() if v is not None},
     )
 
-    if opt_args.optimizer == OptimizerNames.mezo:
+    if script_args.optimizer == OptimizerNames.mezo:
         trainer = MeZoTrainer(
             model=model,
             args=training_args,
@@ -311,7 +299,7 @@ def train(
         )
     else:
         trainer = TrainerWithMuonOptimizer(
-            optimizer_name=opt_args.optimizer,
+            optimizer_name=script_args.optimizer,
             model=model,
             args=training_args,
             train_dataset=train_dataset,
@@ -319,8 +307,8 @@ def train(
         )
 
     trainer.train()
-    trainer.save_model(opt_args.output_dir)
-    tokenizer.save_pretrained(opt_args.output_dir)
+    trainer.save_model(training_args.output_dir)
+    tokenizer.save_pretrained(training_args.output_dir)
 
 
 if __name__ == "__main__":
@@ -328,7 +316,7 @@ if __name__ == "__main__":
     logger = logging.getLogger(__name__)
 
     parser = HfArgumentParser(
-        [ModelArguments, DataArguments, OptimizerArguments, TrainingArguments]
+        [ModelArguments, DataArguments, ScriptArguments, TrainingArguments]
     )
     try:
         model_args, data_args, opt_args, training_args = (
