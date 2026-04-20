@@ -7,7 +7,7 @@
 - **AdamW** – классический адаптивный оптимизатор (базовый уровень).
 - **Muon** – новый оптимизатор на основе ортогонализации матриц (обещает 2× ускорение).
 - **Hybrid (Muon + AdamW)** – параметры модели разделены на две группы:  
-  *внимание* (`q_proj, k_proj, v_proj`) обучается с Muon, остальные – с AdamW.
+  *attention* (`q_proj, k_proj, v_proj`) обучается с Muon, остальные – с AdamW.
 - **MeZO** *(Challenge)* – zeroth-order оптимизатор, оценивающий градиент без обратного распространения.
 
 **Цель:** сравнить оптимизаторы по времени обучения, пиковому потреблению памяти, сходимости и итоговому качеству на наборах данных `PIQA`, `ARC-easy`, `ARC-challenge`, `WinoGrande`, `HellaSwag`.
@@ -82,7 +82,7 @@ scripts/run_mezo.sh
 
 В репозитории есть готовый ноутбук `notebooks/run_experiments.ipynb`, который автоматизирует весь процесс: установку зависимостей, загрузку модели и датасета, запуск экспериментов с AdamW, Muon, Hybrid и MeZO, логирование в TensorBoard/ClearML, а также визуализацию результатов.
 
-### 🚀 Пошаговая инструкция
+### Пошаговая инструкция
 
 1. **Откройте Google Colab**  
    Перейдите на [colab.research.google.com](https://colab.research.google.com).
@@ -91,7 +91,7 @@ scripts/run_mezo.sh
    - Он находится здесь notebooks/GoogleColabRun.ipynb
 
 3. **Включите GPU-ускоритель**  
-   В меню `Runtime` → `Change runtime type` → выберите `T4 GPU` (или `V100`/`A100` для Colab Pro).
+   В меню `Runtime` → `Change runtime type` → выберите `T4 GPU`.
 
 4. **Запустите все ячейки**  
    Нажмите `Runtime` → `Run all`. Ноутбук автоматически:
@@ -159,17 +159,5 @@ scripts/run_mezo.sh
 | + AdamW              |  |  |   |        |     |
 | + Muon               |  |  |   |      |      |
 | + Hybrid             |  |  | |  |  |
-| + MeZO               | |  |  |       |     |
+| MeZO               | |  |  |       |     |
 
-
-
-## 
-
-### Требования
-
-- Python 3.10+
-- CUDA 11.8+ (для GPU)
-- Установка зависимостей:
-
-```bash
-pip install -r requirements.txt

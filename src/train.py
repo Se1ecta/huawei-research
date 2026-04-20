@@ -1,3 +1,5 @@
+"""Оснвовной скрипт обучения."""
+
 import logging
 import os
 from dataclasses import dataclass, field
@@ -97,10 +99,8 @@ def build_dataset(data_args: DataArguments, tokenizer) -> torch.utils.data.Datas
 
     dataset = load_dataset(name2path[data_args.dataset_name], split="train")
 
-    if data_args.train_subset_size is not None:
-        dataset = dataset.select(range(min(data_args.train_subset_size, len(dataset))))
-
-    dataset = dataset.select(range(10_000))
+    if data_args.train_subset_size:
+        dataset = dataset.select(range(data_args.train_subset_size))
 
     def tokenize(batch):
         return tokenizer(batch["text"])
@@ -229,13 +229,13 @@ def train(
 
     set_seed(training_args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    os.makedirs(training_args.output_dir, exist_ok=True)
+    os.makedirs(training_args.output_dir, exist_ok=True)  # type: ignore
 
     tokenizer = AutoTokenizer.from_pretrained(model_args.model_name)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    model = AutoModelForCausalLM.from_pretrained(model_args.model_name).to(device)
+    model = AutoModelForCausalLM.from_pretrained(model_args.model_name).to(device)  # type: ignore
 
     train_dataset = build_dataset(data_args, tokenizer)
 
