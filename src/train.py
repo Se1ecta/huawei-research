@@ -235,9 +235,7 @@ def train(
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    model = AutoModelForCausalLM.from_pretrained(
-        model_args.model_name, device_map="auto"
-    ).to(device)  # type: ignore
+    model = AutoModelForCausalLM.from_pretrained(model_args.model_name).to(device)  # type: ignore
 
     train_dataset = build_dataset(data_args, tokenizer)
 
