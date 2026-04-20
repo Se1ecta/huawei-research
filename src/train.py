@@ -254,7 +254,10 @@ def train(
             train_dataset=train_dataset,
             data_collator=data_collator,
         )
-    elif script_args.optimizer == OptimizerNames.muon:
+    elif (
+        script_args.optimizer == OptimizerNames.muon
+        or script_args.optimizer == OptimizerNames.hybrid_muon
+    ):
         trainer = TrainerWithMuonOptimizer(
             optimizer_name=script_args.optimizer,
             model=model,
