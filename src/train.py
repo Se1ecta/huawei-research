@@ -129,6 +129,7 @@ def build_dataset(data_args: DataArguments, tokenizer) -> torch.utils.data.Datas
 
 
 def build_optimizer(name: str, model, lr: float, wd: float) -> torch.optim.Optimizer:
+    """Фабричный метод для получения оптимизатора."""
 
     if name == OptimizerNames.adamw:
         return torch.optim.AdamW(
@@ -173,14 +174,19 @@ class TrainerWithMuonOptimizer(Trainer):
     def __init__(self, optimizer_name, *args, **kwargs):
         self.optimizer_name = optimizer_name
         super().__init__(*args, **kwargs)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
-    def create_optimizer(self):
+    def create_optimizer(self) -> torch.optim.Optimizer:
         self.optimizer = build_optimizer(
             self.optimizer_name,
             self.model,
             lr=self.args.learning_rate,
             wd=self.args.weight_decay,
         )
+        self.logger.info(
+            f"✅ Используется оптимизатор: {type(self.optimizer).__name__}"
+        )
+        return self.optimizer
 
 
 def build_task_name(

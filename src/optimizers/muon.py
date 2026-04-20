@@ -118,6 +118,7 @@ class Muon(torch.optim.Optimizer):
         if closure is not None:
             with torch.enable_grad():
                 loss = closure()
+        print("MUON STEP")
 
         for group in self.param_groups:
             ############################
