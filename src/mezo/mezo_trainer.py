@@ -80,6 +80,7 @@ class MeZoTrainer(Trainer):
                 # Логирование
                 if step % args.logging_steps == 0:
                     self.log({"loss": loss.item(), "step": self.state.global_step})
+                    print(f"Step {self.state.global_step}: loss = {loss.item():.6f}")
 
                 if self.state.global_step >= max_steps:
                     break
