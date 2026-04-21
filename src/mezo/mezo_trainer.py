@@ -6,7 +6,6 @@ import time
 import numpy as np
 import torch
 from transformers import Trainer, TrainingArguments
-from transformers.trainer_pt_utils import nested_gather
 from transformers.trainer_utils import TrainOutput, speed_metrics
 
 
@@ -108,15 +107,9 @@ class MeZoTrainer(Trainer):
                     )
 
                     if self.state.global_step % args.logging_steps == 0:
-                        tr_loss_scalar = (
-                            nested_gather(tr_loss, self.args.parallel_mode)
-                            .mean()
-                            .item()
-                        )
-
                         self.log(
                             {
-                                "loss": tr_loss_scalar
+                                "loss": loss.item()
                                 / (
                                     self.state.global_step
                                     - self._globalstep_last_logged
