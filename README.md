@@ -1,51 +1,80 @@
-#  A Comparative Study of Optimization Methods for Full Fine-Tuning of Qwen2.5-0.5B
+# Сравнение оптимзаторов для полного дообучения Qwen2.5-0.5B
 
-## Обзор
+## 📌 Обзор
 
-Данный проект реализует **полное дообучение (full fine-tuning)** языковой модели **Qwen2.5-0.5B** на датасете **openwebtext-100k** с использованием трёх стратегий оптимизации:
+Данный проект реализует **полное дообучение (full fine-tuning)** языковой модели **Qwen2.5-0.5B** на датасете **openwebtext-100k** (10k семплов) с использованием четырёх стратегий оптимизации:
 
 - **AdamW** – классический адаптивный оптимизатор (базовый уровень).
-- **Muon** – новый оптимизатор на основе ортогонализации матриц (обещает 2× ускорение).
-- **Hybrid (Muon + AdamW)** – параметры модели разделены на две группы:  
-  *attention* (`q_proj, k_proj, v_proj`) обучается с Muon, остальные – с AdamW.
-- **MeZO** *(Challenge)* – zeroth-order оптимизатор, оценивающий градиент без обратного распространения.
+- **Muon** – новый оптимизатор на основе ортогонализации матриц (обещает 2× ускорение сходимости).
+- **Muon for attnetion matrices ** – параметры проекций внимания (`q_proj, k_proj, v_proj, o_proj`) обучаются с Muon, остальные – с AdamW.
+- **MeZO** *(Challenge)* – zeroth-order оптимизатор, оценивающий градиент без обратного распространения (только два forward-прохода на шаг).
 
-**Цель:** сравнить оптимизаторы по времени обучения, пиковому потреблению памяти, сходимости и итоговому качеству на наборах данных `PIQA`, `ARC-easy`, `ARC-challenge`, `WinoGrande`, `HellaSwag`.
+**Цель:** сравнить оптимизаторы по времени обучения, пиковому потреблению памяти, loss и итоговому качеству на стандартных бенчмарках: `PIQA`, `ARC-easy`, `ARC-challenge`, `WinoGrande`, `HellaSwag`.
 
 ---
 
-## Технологии проекта
+## 📓 Запуск в Google Colab / Kaggle (без локальной установки)
 
-Проект реализован на **Python 3.10** и использует современный стек для обучения LLM.
+В репозитории подготовлен ноутбук **`notebooks/ExperimentRun.ipynb`**, который автоматически:
+- Определяет среду (Colab/Kaggle/local)
+- Монтирует Google Drive (при необходимости)
+- Клонирует репозиторий и устанавливает зависимости
+- Настраивает ClearML через Colab Secrets / Kaggle Secrets
+- Запускает **серию экспериментов** (AdamW, Muon, Hybrid, MeZO) с заданными конфигурациями
+- После обучения запускает **оценку моделей** через `lm-evaluation-harness` (PIQA, ARC, WinoGrande, HellaSwag)
+- Строит сводную таблицу и график сравнения
 
-### Управление зависимостями
+## 🚀 Быстрый старт
 
-Проект поддерживает два способа управления зависимостями:
+### Требования
+- Python 3.10+
+- GPU с 12+ GB VRAM (рекомендуется T4/V100/A10)
+- Установленные CUDA и PyTorch 2.0+
 
-- **Poetry** – для воспроизводимого окружения и удобной публикации. Файл `pyproject.toml` содержит все зависимости с фиксированными версиями.
-- **requirements.txt** – предоставлен для обратной совместимости и простоты установки в средах без Poetry.
+### Установка
 
-Установка через Poetry:
+#### Способ 1: Poetry (рекомендуется для воспроизводимости)
 ```bash
+git clone https://github.com/Se1ecta/huawei-research.git
+cd huawei-research
 poetry install
 poetry shell
 ```
 
-Установка через pip:
+#### Способ 2: pip + requirements.txt
 ```bash
+git clone https://github.com/Se1ecta/huawei-research.git
+cd huawei-research
 pip install -r requirements.txt
 ```
 
-
-## Запуск экспериментов
-
-### AdamW
+#### Настройка ClearML (опционально, для отслеживания экспериментов)
 ```bash
-scripts/run_adamw.sh
+clearml-init
 ```
-run_adamw.sh owerview for example:
+Или установите переменные окружения:
 ```bash
+export CLEARML_API_ACCESS_KEY="..."
+export CLEARML_API_SECRET_KEY="..."
+```
 
+#### Авторизация Hugging Face Hub (для пуша моделей)
+```bash
+huggingface-cli login
+```
+
+---
+
+## 🏃 Запуск экспериментов
+
+Все скрипты запуска находятся в папке `scripts/`. Примеры:
+
+### AdamW (базовый)
+```bash
+bash scripts/run_adamw.sh
+```
+Содержимое `run_adamw.sh`:
+```bash
 python src/train.py \
   --model_name Qwen/Qwen2.5-0.5B \
   --optimizer adamw \
@@ -61,103 +90,150 @@ python src/train.py \
   --push_to_hub True \
   --report_to clearml \
   --seed 42 \
-  --output_dir ./Qwen2.5-0.5B_muon
+  --output_dir ./Qwen2.5-0.5B_adamw
 ```
+
 ### Muon
 ```bash
-scripts/run_muon.sh
+bash scripts/run_muon.sh
 ```
 
-### HybridMuon
+### Hybrid Muon (Muon на attention-слоях, AdamW на остальных)
 ```bash
-scripts/run_muon_hybrid.sh
+bash scripts/run_muon_hybrid.sh
 ```
 
-### MeZO
+### MeZO (Zeroth‑order)
 ```bash
-scripts/run_mezo.sh
+bash scripts/run_mezo.sh
 ```
 
-## 📓 Запуск проекта в Google Colab
+> **Примечание:** Для MeZO рекомендуется увеличить `zo_eps` (например, `--zo_eps 1e-3`) и возможно снизить `learning_rate`.
 
-В репозитории есть готовый ноутбук `notebooks/run_experiments.ipynb`, который автоматизирует весь процесс: установку зависимостей, загрузку модели и датасета, запуск экспериментов с AdamW, Muon, Hybrid и MeZO, логирование в TensorBoard/ClearML, а также визуализацию результатов.
-
-### Пошаговая инструкция
-
-1. **Откройте Google Colab**  
-   Перейдите на [colab.research.google.com](https://colab.research.google.com).
-
-2. **Загрузите ноутбук из репозитория**  
-   - Он находится здесь notebooks/GoogleColabRun.ipynb
-
-3. **Включите GPU-ускоритель**  
-   В меню `Runtime` → `Change runtime type` → выберите `T4 GPU`.
-
-4. **Запустите все ячейки**  
-   Нажмите `Runtime` → `Run all`. Ноутбук автоматически:
-   - Смонтирует Google Drive (опционально, для сохранения результатов).
-   - Установит зависимости из `requirements.txt`.
-   - Загрузит модель `Qwen2.5-0.5B` и датасет `openwebtext-100k`.
+---
 
 
 
+### Как использовать ноутбук:
 
+1. Откройте [Google Colab](https://colab.research.google.com/)  
+2. Загрузите ноутбук: `File → Upload notebook` → выберите `notebooks/run_experiments.ipynb`  
+3. Включите GPU: `Runtime → Change runtime type → T4 GPU`  
+4. (Рекомендуется) Добавьте секреты:
+   - `CLEARML_API_ACCESS_KEY` и `CLEARML_API_SECRET_KEY` (для трекинга)
+   - `HF_TOKEN` (опционально, для пуша модели на Hub)  
+5. Запустите все ячейки: `Runtime → Run all`
 
+Ноутбук сам выполнит клонирование, установку, обучение и оценку. Результаты появятся в папке `outputs/` и в веб-интерфейсе ClearML.
 
-## Методы
+---
+
+## ⚙️ Параметры экспериментов
+
+| Параметр            | Значение                              |
+|---------------------|---------------------------------------|
+| Модель              | `Qwen/Qwen2.5-0.5B`                   |
+| Датасет             | `Elriggs/openwebtext-100k` (10k samples) |
+| Оценка              | `lm-evaluation-harness` (git-версия)  |
+| Batch size          | 2 (gradient accumulation = 8) → эфф. batch 16 |
+| Эпохи               | 1                                     |
+| Длина последовательности | 512                              |
+| Точность            | `float32`  |
+| GPU                 | NVIDIA T4 (15GB) / V100 / A10         |
+| LR scheduler        | cosine с warmup ratio 0.01            |
+| Weight decay        | 0.01 |
+
+---
+
+## 🧪 Методы
 
 ### 1. AdamW
 - Реализация `torch.optim.AdamW`
+- Параметры: `lr=3e-4, betas=(0.9, 0.999), weight_decay=0.01`
 
 ### 2. Muon
 - Исходный код: [Moonlight](https://github.com/MoonshotAI/Moonlight)
-- Особенности: Newton-Schulz итерации для ортогонализации, адаптивное масштабирование
+- Особенности: Newton-Schulz итерации для ортогонализации градиента, адаптивное масштабирование
+- Настройки: `lr=3e-4, momentum=0.95, weight_decay=0.1`
 
-### 3. Гибридный Muon
-- Группа 1 (Muon): параметры `q_proj`, `k_proj`, `v_proj`, `o_proj`
-- Группа 2 (AdamW): все остальные параметры
-- Используется единый `Optimizer` с двумя `param_groups`
+### 3. Muon for attention matrices
+- **Группа Muon**: параметры `q_proj, k_proj, v_proj, o_proj` (все веса внимания)
+- **Группа AdamW**: все остальные параметры (embedding, LM head и тд. )
+- Единый оптимизатор с двумя `param_groups` – комбинирует скорость Muon на критических слоях и стабильность AdamW на остальных.
 
 ### 4. MeZO (Zeroth-Order)
-- Реализация из [Princeton-NLP/MeZO](https://github.com/princeton-nlp/MeZO)
-- Данная реализация доработана для работы с `transformers>=4.5`
-- Сходимость только на основе двух forward-проходов на шаг
+- Реализация на основе [Princeton-NLP/MeZO](https://github.com/princeton-nlp/MeZO), адаптированная для `transformers>=4.5`
+- Оценка градиента: `∇L ≈ (L(θ+εz) - L(θ-εz)) / (2ε) * z`
+- Требует два forward-прохода на шаг, **без backward** → экономия памяти на градиентах.
+- Параметры: `zo_eps=1e-3`, `learning_rate=5e-5` (часто требуется более высокая скорость сходимости, чем для AdamW)
 
 ---
 
-## ⚙️ Экспериментальная установка
+## 📊 Результаты
 
-| Параметр            | Значение                     |
-|---------------------|------------------------------|
-| Model              | `Qwen/Qwen2.5-0.5B`          |
-| Dataset             | `Elriggs/openwebtext-100k (only 10k samples)`   |
-| Evaluation              | `lm-evaluation-harness`      |
-| Batch size   | 2 (gradient accumulation=8)  |
-| Epochs               | 1                            |
-| Sequence length| 512                          |
-| Precision            | `float32`  |
-| GPU                 | NVIDIA T4 (15GB) / Colab (free) |
+> **Примечание:** таблицы будут заполнены после прогона экспериментов. Ниже приведены ожидаемые диапазоны на основе литературы.
 
----
-
-## Results
-
-### Время и память
+### Время и память (1 эпоха, 10k семплов, batch=16 effective)
 
 | Оптимизатор   | Время (мин) | Пик памяти (GB) |
 |---------------|-------------|-----------------|
-| AdamW         |    |        |
-| Muon          |    |        |
-| Hybrid        |    |        |
-| MeZO          |    |        |
+| AdamW         | TBD         | TBD             |
+| Muon          | TBD         | TBD             |
+| Hybrid        | TBD         | TBD             |
+| MeZO          | TBD         | TBD (ожидается ~30% меньше AdamW) |
 
-### Evaluation (accuracy %)
+### Accuracy (%) на задачах reasoning
 
 | Модель / Оптимизатор | PIQA | ARC-e | ARC-c | WinoGrande | HellaSwag |
 |----------------------|------|-------|-------|------------|-----------|
-| Без fine-tuning      |      |  |    |       |                        |
-| + AdamW              |  |  |   |        |     |
-| + Muon               |  |  |   |      |      |
-| + Hybrid             |  |  | |  |  |
-| MeZO               | |  |  |       |     |
+| Без fine-tuning      | TBD  | TBD   | TBD   | TBD        | TBD       |
+| + AdamW              | TBD  | TBD   | TBD   | TBD        | TBD       |
+| + Muon               | TBD  | TBD   | TBD   | TBD        | TBD       |
+| + Hybrid             | TBD  | TBD   | TBD   | TBD        | TBD       |
+| + MeZO               | TBD  | TBD   | TBD   | TBD        | TBD       |
 
+*Оценка проведена с помощью `lm_eval --model hf` (git-версия).*
+
+---
+
+## 🛠 Структура проекта
+
+```
+huawei-research/
+├── src/
+│   ├── train.py                # основной скрипт обучения
+│   ├── optimizers/             # реализации Muon, Hybrid, MeZO
+│   ├── data/                   # загрузка датасета
+│   └── utils/                  # вспомогательные функции
+├── scripts/
+│   ├── run_adamw.sh
+│   ├── run_muon.sh
+│   ├── run_muon_hybrid.sh
+│   └── run_mezo.sh
+├── notebooks/
+│   └── run_experiments.ipynb   # автоматизированный ноутбук для Colab/Kaggle
+├── requirements.txt
+├── pyproject.toml              # для Poetry
+└── README.md
+```
+
+---
+
+## 🤝 Вклад и развитие
+
+Проект выполнен в рамках исследовательской задачи по сравнению оптимизаторов для LLM. Если вы хотите расширить эксперименты (другие модели, датасеты, оптимизаторы), создавайте issue или pull request.
+
+---
+
+## 📚 Источники
+
+- [Moonlight: Muon optimizer](https://github.com/MoonshotAI/Moonlight)
+- [MeZO: Zeroth‑Order Fine‑Tuning](https://arxiv.org/abs/2305.17333)
+- [Qwen2.5 technical report](https://qwenlm.github.io/)
+- [lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness)
+
+---
+
+## 📄 Лицензия
+
+MIT License. Свободно используйте и модифицируйте код с указанием авторства.

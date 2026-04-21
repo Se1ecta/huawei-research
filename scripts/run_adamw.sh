@@ -14,7 +14,7 @@ python "$SCRIPT_PATH" \
   --warmup_ratio 0.01 \
   --weight_decay 0.05 \
   --logging_steps 10 \
-  --push_to_hub True \
+  --push_to_hub False \
   --report_to clearml \
   --seed 42 \
   --output_dir ./Qwen2.5-0.5B_adamw
