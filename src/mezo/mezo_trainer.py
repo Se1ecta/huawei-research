@@ -148,7 +148,7 @@ class MeZoTrainer(Trainer):
         )
         metrics["train_loss"] = train_loss
 
-        self.log(metrics)
+        self.log(metrics, start_time=start_time)
 
         self.control = self.callback_handler.on_train_end(
             args, self.state, self.control
