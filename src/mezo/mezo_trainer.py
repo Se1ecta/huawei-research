@@ -35,6 +35,9 @@ class MeZoTrainer(Trainer):
         self,
         batch_size: int | None = None,
         args: TrainingArguments | None = None,
+        resume_from_checkpoint=None,
+        trial=None,
+        ignore_keys_for_eval=None,
     ) -> TrainOutput:
         self._train_batch_size = batch_size
         train_dataloader = self.get_train_dataloader()
