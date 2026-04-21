@@ -77,6 +77,11 @@ class CustomTrainingArguments(TrainingArguments):
         metadata={"help": "Warmap ratio"},
     )
 
+    zo_eps: Optional[float] = field(
+        default=1e-3,
+        metadata={"help": "eps in MeZO"},
+    )
+
 
 def setup_logging() -> None:
     """Настраивает базовое логирование."""
