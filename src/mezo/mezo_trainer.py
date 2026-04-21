@@ -112,19 +112,16 @@ class MeZoTrainer(Trainer):
                     )
 
                     if self.state.global_step % args.logging_steps == 0:
+                        avg_loss = tr_loss / (
+                            self.state.global_step - self._globalstep_last_logged
+                        )
                         self.log(
                             {
-                                "loss": loss.item(),
+                                "loss": avg_loss.item(),
                                 "step": self.state.global_step,
                                 "learning_rate": self._get_learning_rate(),
                             }
                         )
-
-                    self.state.global_step += 1
-                    self.state.epoch = epoch + (step + 1) / steps_in_epoch
-                    self.control = self.callback_handler.on_step_end(
-                        self.args, self.state, self.control
-                    )
 
                     self._maybe_log_save_evaluate(
                         grad_norm=None,
