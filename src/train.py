@@ -69,6 +69,7 @@ class DataArguments:
     )
 
 
+@dataclass
 class CustomTrainingArguments(TrainingArguments):
     """Нужен для переопределения дефолтных аргументов в остальном тот же TrainingArguments"""
 
