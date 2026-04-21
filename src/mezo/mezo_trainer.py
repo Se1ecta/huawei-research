@@ -107,13 +107,10 @@ class MeZoTrainer(Trainer):
                     )
 
                     if self.state.global_step % args.logging_steps == 0:
+                        avg_loss = tr_loss.item() / args.gradient_accumulation_steps
                         self.log(
                             {
-                                "loss": loss.item()
-                                / (
-                                    self.state.global_step
-                                    - self._globalstep_last_logged
-                                ),
+                                "loss": avg_loss,
                                 "step": self.state.global_step,
                                 "learning_rate": self._get_learning_rate(),
                             }
