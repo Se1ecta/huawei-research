@@ -48,6 +48,32 @@ cd huawei-research
 pip install -r requirements.txt
 ```
 
+Добавим в README раздел про настройку переменных окружения через `.env` файл. В текущей версии проекта, вероятно, присутствует файл `.env.example` с шаблоном для `CLEARML_API_ACCESS_KEY`, `CLEARML_API_SECRET_KEY`, `HF_TOKEN` и т.д. Пользователь должен скопировать его и заполнить.
+
+Ниже — **обновлённый фрагмент README** (вставляется после раздела установки зависимостей, перед запуском экспериментов). Также добавим упоминание, что в Colab/Kaggle используются встроенные секреты.
+
+---
+
+## 🔐 Настройка переменных окружения
+
+Для локального запуска экспериментов (через скрипты `scripts/*.sh`) рекомендуется использовать файл `.env` для хранения sensitive данных (ключи ClearML, Hugging Face токен).
+
+1. Скопируйте шаблон:
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Отредактируйте `.env`:
+
+
+3. Загрузите переменные в окружение перед запуском:
+   ```bash
+   source .env
+   # или используйте python-dotenv внутри скриптов
+   ```
+
+Полный обновлённый README с этим блоком можно вставить в файл. Если нужно, я могу прислать весь README целиком с уже интегрированным разделом.
+
 #### Настройка ClearML (опционально, для отслеживания экспериментов)
 ```bash
 clearml-init
@@ -149,23 +175,19 @@ bash scripts/run_mezo.sh
 
 ### 1. AdamW
 - Реализация `torch.optim.AdamW`
-- Параметры: `lr=3e-4, betas=(0.9, 0.999), weight_decay=0.01`
 
 ### 2. Muon
 - Исходный код: [Moonlight](https://github.com/MoonshotAI/Moonlight)
 - Особенности: Newton-Schulz итерации для ортогонализации градиента, адаптивное масштабирование
-- Настройки: `lr=3e-4, momentum=0.95, weight_decay=0.1`
 
 ### 3. Muon for attention matrices
 - **Группа Muon**: параметры `q_proj, k_proj, v_proj, o_proj` (все веса внимания)
 - **Группа AdamW**: все остальные параметры (embedding, LM head и тд. )
-- Единый оптимизатор с двумя `param_groups` – комбинирует скорость Muon на критических слоях и стабильность AdamW на остальных.
 
 ### 4. MeZO (Zeroth-Order)
 - Реализация на основе [Princeton-NLP/MeZO](https://github.com/princeton-nlp/MeZO), адаптированная для `transformers>=4.5`
 - Оценка градиента: `∇L ≈ (L(θ+εz) - L(θ-εz)) / (2ε) * z`
 - Требует два forward-прохода на шаг, **без backward** → экономия памяти на градиентах.
-- Параметры: `zo_eps=1e-3`, `learning_rate=5e-5` (часто требуется более высокая скорость сходимости, чем для AdamW)
 
 ---
 
@@ -200,40 +222,20 @@ bash scripts/run_mezo.sh
 
 ```
 huawei-research/
-├── src/
-│   ├── train.py                # основной скрипт обучения
-│   ├── optimizers/             # реализации Muon, Hybrid, MeZO
-│   ├── data/                   # загрузка датасета
-│   └── utils/                  # вспомогательные функции
+├── notebooks/
+│   └── ExperimentRun.ipynb   # автоматизированный ноутбук для Colab/Kaggle
 ├── scripts/
 │   ├── run_adamw.sh
 │   ├── run_muon.sh
 │   ├── run_muon_hybrid.sh
 │   └── run_mezo.sh
-├── notebooks/
-│   └── run_experiments.ipynb   # автоматизированный ноутбук для Colab/Kaggle
+├── src/
+│   ├── train.py                # основной скрипт обучения
+│   ├── optimizers/             # реализации Muon
+│   ├── mezo/                   # реализации Mezo
+
+
 ├── requirements.txt
 ├── pyproject.toml              # для Poetry
 └── README.md
 ```
-
----
-
-## 🤝 Вклад и развитие
-
-Проект выполнен в рамках исследовательской задачи по сравнению оптимизаторов для LLM. Если вы хотите расширить эксперименты (другие модели, датасеты, оптимизаторы), создавайте issue или pull request.
-
----
-
-## 📚 Источники
-
-- [Moonlight: Muon optimizer](https://github.com/MoonshotAI/Moonlight)
-- [MeZO: Zeroth‑Order Fine‑Tuning](https://arxiv.org/abs/2305.17333)
-- [Qwen2.5 technical report](https://qwenlm.github.io/)
-- [lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness)
-
----
-
-## 📄 Лицензия
-
-MIT License. Свободно используйте и модифицируйте код с указанием авторства.

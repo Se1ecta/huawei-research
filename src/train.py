@@ -1,11 +1,13 @@
 """Оснвовной скрипт обучения."""
 
+import functools
 import logging
+import operator
 import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from pathlib import Path
 
 import torch
 from clearml import Task
@@ -37,9 +39,7 @@ class OptimizerNames(str, Enum):
 class ScriptArguments:
     """Аргументы, специфичные для скрипта."""
 
-    optimizer: OptimizerNames = field(
-        default=OptimizerNames.adamw, metadata={"help": "Тип оптимизатора"}
-    )
+    optimizer: OptimizerNames = field(default=OptimizerNames.adamw, metadata={"help": "Тип оптимизатора"})
 
 
 @dataclass
@@ -60,25 +60,23 @@ class DataArguments:
         default="openwebtext-100k",
         metadata={"help": "Имя датасета из списка предопределённых"},
     )
-    train_subset_size: Optional[int] = field(
+    train_subset_size: int | None = field(
         default=10_000,
         metadata={"help": "Количество примеров для обучения (None = все)"},
     )
-    seq_length: int = field(
-        default=512, metadata={"help": "Длина последовательности для группировки"}
-    )
+    seq_length: int = field(default=512, metadata={"help": "Длина последовательности для группировки"})
 
 
 @dataclass
 class CustomTrainingArguments(TrainingArguments):
     """Нужен для переопределения дефолтных аргументов в остальном тот же TrainingArguments"""
 
-    warmup_ratio: Optional[float] = field(
+    warmup_ratio: float | None = field(
         default=0.0,
         metadata={"help": "Warmap ratio"},
     )
 
-    zo_eps: Optional[float] = field(
+    zo_eps: float | None = field(
         default=1e-3,
         metadata={"help": "eps in MeZO"},
     )
@@ -93,37 +91,37 @@ def setup_logging() -> None:
     )
 
 
-def build_dataset(data_args: DataArguments, tokenizer) -> torch.utils.data.Dataset:
+def build_dataset(data_args: DataArguments, tokenizer) -> torch.utils.data.Dataset:  # noqa: ANN001
     """Загружает и подготавливает датасет для языкового моделирования."""
     name2path = {
         "openwebtext-100k": "Elriggs/openwebtext-100k",
     }
     if data_args.dataset_name not in name2path:
-        raise ValueError(
-            f"Неизвестный датасет: {data_args.dataset_name}. Доступны: {list(name2path.keys())}"
-        )
+        msg = f"Неизвестный датасет: {data_args.dataset_name}. Доступны: {list(name2path.keys())}"
+        raise ValueError(msg)
 
     dataset = load_dataset(name2path[data_args.dataset_name], split="train")
 
     if data_args.train_subset_size:
         dataset = dataset.select(range(data_args.train_subset_size))
 
-    def tokenize(batch):
+    def tokenize(batch: dict) -> dict:
+        """Токенизация текста."""
         return tokenizer(batch["text"])
 
     dataset = dataset.map(tokenize, batched=True, remove_columns=["text"])
 
-    def group_texts(examples):
-        concatenated = {k: sum(examples[k], []) for k in examples.keys()}
+    def group_texts(examples: dict) -> dict:
+        """
+        Упаковывает примеры в послдовтелности фиксированной длины.
+        """
+        concatenated = {k: functools.reduce(operator.iadd, examples[k], []) for k in examples}
         total_length = len(concatenated["input_ids"])
         total_length = (total_length // data_args.seq_length) * data_args.seq_length
 
         result = {
-            k: [
-                concatenated[k][i : i + data_args.seq_length]
-                for i in range(0, total_length, data_args.seq_length)
-            ]
-            for k in concatenated.keys()
+            k: [concatenated[k][i : i + data_args.seq_length] for i in range(0, total_length, data_args.seq_length)]
+            for k in concatenated
         }
 
         result["labels"] = result["input_ids"].copy()
@@ -134,22 +132,14 @@ def build_dataset(data_args: DataArguments, tokenizer) -> torch.utils.data.Datas
     return dataset
 
 
-def build_muon_optimizer(
-    name: str, model, lr: float, wd: float
-) -> torch.optim.Optimizer:
+def build_muon_optimizer(name: str, model, lr: float, wd: float) -> torch.optim.Optimizer:  # noqa: ANN001
     """Фабричный метод для получения muon оптимизатора."""
-
     muon_params = []
     adam_params = []
 
     for n, p in model.named_parameters():
         if name == OptimizerNames.muon:
-            if (
-                p.ndim == 2
-                and "embed_tokens" not in n
-                and "lm_head" not in n
-                and "norm" not in n
-            ):
+            if p.ndim == 2 and "embed_tokens" not in n and "lm_head" not in n and "norm" not in n:
                 muon_params.append(p)
             else:
                 adam_params.append(p)
@@ -171,21 +161,24 @@ def build_muon_optimizer(
 class TrainerWithMuonOptimizer(Trainer):
     """Trainer для работы с Muon."""
 
-    def __init__(self, optimizer_name, *args, **kwargs):
+    def __init__(self, optimizer_name: str, *args, **kwargs):  # noqa: ANN002, ANN003, D107
         self.optimizer_name = optimizer_name
         super().__init__(*args, **kwargs)
         self.logger = logging.getLogger(self.__class__.__name__)
 
     def create_optimizer(self) -> torch.optim.Optimizer:
+        """
+        Переопредленный метод для создания optimizer Muon.
+
+        :return torch.optim.Optimizer: _description_
+        """
         self.optimizer = build_muon_optimizer(
             self.optimizer_name,
             self.model,
             lr=self.args.learning_rate,
             wd=self.args.weight_decay,
         )
-        self.logger.info(
-            f"✅ Используется оптимизатор: {type(self.optimizer).__name__}"
-        )
+        self.logger.info(f"✅ Используется оптимизатор: {type(self.optimizer).__name__}")
         return self.optimizer
 
 
@@ -195,7 +188,7 @@ def build_task_name(
     data_args: DataArguments,
 ) -> str:
     """Формирует имя задачи для ClearML."""
-    date = datetime.now().strftime("%m%d_%H%M")
+    date = datetime.now().strftime("%m%d_%H%M")  # noqa: DTZ005
     return (
         f"{optimizer_name}"
         f"_lr{training_args.learning_rate:.1e}"
@@ -229,13 +222,13 @@ def train(
     data_args: DataArguments,
     script_args: ScriptArguments,
     training_args: TrainingArguments,
-):
-
+) -> None:
+    """Метод для запуска обучения."""
     init_clearml_task(script_args.optimizer, training_args, data_args)
 
     set_seed(training_args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    os.makedirs(training_args.output_dir, exist_ok=True)  # type: ignore
+    Path(training_args.output_dir).mkdir(parents=True)
 
     tokenizer = AutoTokenizer.from_pretrained(model_args.model_name)
     if tokenizer.pad_token is None:
@@ -254,10 +247,7 @@ def train(
             train_dataset=train_dataset,
             data_collator=data_collator,
         )
-    elif (
-        script_args.optimizer == OptimizerNames.muon
-        or script_args.optimizer == OptimizerNames.hybrid_muon
-    ):
+    elif script_args.optimizer in (OptimizerNames.muon, OptimizerNames.hybrid_muon):
         trainer = TrainerWithMuonOptimizer(
             optimizer_name=script_args.optimizer,
             model=model,
@@ -282,12 +272,8 @@ if __name__ == "__main__":
     setup_logging()
     logger = logging.getLogger(__name__)
 
-    parser = HfArgumentParser(
-        [ModelArguments, DataArguments, ScriptArguments, CustomTrainingArguments]
-    )
+    parser = HfArgumentParser([ModelArguments, DataArguments, ScriptArguments, CustomTrainingArguments])
 
-    model_args, data_args, script_args, training_args = (
-        parser.parse_args_into_dataclasses()
-    )
+    model_args, data_args, script_args, training_args = parser.parse_args_into_dataclasses()
 
     train(model_args, data_args, script_args, training_args)

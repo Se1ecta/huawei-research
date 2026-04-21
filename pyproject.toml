@@ -16,6 +16,7 @@ dependencies = [
     "accelerate (==1.1.0)",
     "tensorboardx (>=2.6.5,<3.0.0)",
     "clearml (>=2.1.5,<3.0.0)",
+    "python-dotenv (>=1.2.2,<2.0.0)",
     
 ]
 
@@ -27,3 +28,63 @@ build-backend = "poetry.core.masonry.api"
 [tool.poetry.group.dev.dependencies]
 lm-eval = {git = "https://github.com/EleutherAI/lm-evaluation-harness.git"}
 
+
+
+[tool.black]
+skip-string-normalization = true
+line-length = 120
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "ANN204", "ANN401",
+    "D104", # no docstring in public package
+    "D200", # One-line docstring should fit on one line with quotes
+    "D212",
+    "RSE102",
+    "D203",
+    "FLY002", # fix produces invalid code https://github.com/astral-sh/ruff/issues/5150
+    "G004", # logging with f string is ok
+    "ARG001",
+    "ARG002",
+    "RET504",
+    "FBT001",
+    "UP007",
+    "RUF013",
+    "PYI024",
+    "B007",
+    "E731",
+    "COM812",
+    "ISC001",
+    "FBT002",
+    "DTZ003",
+    "SLF001",
+    "F841",
+    "I001",
+    "RUF001",
+    "RUF002",
+    "D400",
+    "D415",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"tests/*" = ["D10", "D101", "D103", "S101", "ANN", "PLR2004", "S106"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 5
+
+[tool.ruff.lint.pylint]
+max-args = 7
+
+[tool.coverage.report]
+exclude_also = [
+    "if TYPE_CHECKING:",
+]
+
+[tool.ruff.format]
+line-ending = "native"
