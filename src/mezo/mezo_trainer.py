@@ -94,6 +94,9 @@ class MeZoTrainer(Trainer):
                 ) == len_dataloader:
                     self.zo_update(model)
 
+                    if self.optimizer is not None:
+                        self.optimizer.step()
+
                     if self.lr_scheduler is not None:
                         self.lr_scheduler.step()
 
@@ -107,11 +110,13 @@ class MeZoTrainer(Trainer):
                     )
 
                     self._maybe_log_save_evaluate(
+                        grad_norm=None,
                         tr_loss=tr_loss,
                         model=model,
                         trial=trial,
                         epoch=epoch,
                         ignore_keys_for_eval=ignore_keys_for_eval,
+                        start_time=start_time,
                     )
 
                     if self.state.global_step >= max_steps:
