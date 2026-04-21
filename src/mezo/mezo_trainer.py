@@ -109,8 +109,7 @@ class MeZoTrainer(Trainer):
                         args, self.state, self.control
                     )
 
-                    if step % args.logging_steps == 0:
-                        self.log({"loss": loss.item(), "step": self.state.global_step})
+                    self.log({"loss": loss.item(), "step": self.state.global_step})
 
                     self._maybe_log_save_evaluate(
                         grad_norm=None,
