@@ -66,12 +66,8 @@ class MeZoTrainer(Trainer):
         tr_loss = torch.tensor(0.0, device=args.device)
         self._total_loss_scalar = 0.0
         self._globalstep_last_logged = 0
-        steps_in_epoch = (
-            len_dataloader
-            if len_dataloader is not None
-            else max_steps * args.gradient_accumulation_steps
-        )
-
+        accumulated_loss_for_logging = 0.0
+        steps_for_logging = 0
         start_time = time.time()
 
         for epoch in range(num_train_epochs):
@@ -94,6 +90,9 @@ class MeZoTrainer(Trainer):
 
                 tr_loss += loss
 
+                accumulated_loss_for_logging += loss.item()
+                steps_for_logging += 1
+
                 if (step + 1) % args.gradient_accumulation_steps == 0 or (
                     step + 1
                 ) == len_dataloader:
@@ -112,12 +111,10 @@ class MeZoTrainer(Trainer):
                     )
 
                     if self.state.global_step % args.logging_steps == 0:
-                        avg_loss = tr_loss / (
-                            self.state.global_step - self._globalstep_last_logged
-                        )
+                        avg_loss = accumulated_loss_for_logging / steps_for_logging
                         self.log(
                             {
-                                "loss": avg_loss.item(),
+                                "loss": avg_loss,
                                 "step": self.state.global_step,
                                 "learning_rate": self._get_learning_rate(),
                             }
