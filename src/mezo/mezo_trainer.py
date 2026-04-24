@@ -25,7 +25,6 @@ class MeZoTrainer(Trainer):
     Args:
         args (TrainingArguments): Аргументы тренировки. Должны содержать:
             - zo_eps (float): Масштаб возмущения для zeroth-order (по умолчанию 1e-3)
-    Note: Данная реализация пока только для gradient_accumulation=1
 
     """
 
@@ -37,9 +36,6 @@ class MeZoTrainer(Trainer):
         trial: dict[str, Any] = None,
         ignore_keys_for_eval: list[str] | None = None,
     ) -> TrainOutput:
-        if args.gradient_accumulation_steps != 1:
-            msg = "Реализвация MezoTrainer поддерживает на данный момент только gradient_accumulation_steps=1!"
-            raise ValueError(msg)
 
         self._train_batch_size = batch_size
         train_dataloader = self.get_train_dataloader()
