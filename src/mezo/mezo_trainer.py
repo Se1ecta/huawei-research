@@ -2,10 +2,11 @@
 
 import math
 import time
+from typing import Any
 
 import numpy as np
 import torch
-from transformers import Any, Trainer, TrainingArguments
+from transformers import Trainer, TrainingArguments
 from transformers.trainer_utils import TrainOutput, speed_metrics
 
 
