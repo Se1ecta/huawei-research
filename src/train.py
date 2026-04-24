@@ -71,11 +71,6 @@ class DataArguments:
 class CustomTrainingArguments(TrainingArguments):
     """Нужен для переопределения дефолтных аргументов в остальном тот же TrainingArguments"""
 
-    warmup_ratio: float | None = field(
-        default=0.0,
-        metadata={"help": "Warmap ratio"},
-    )
-
     zo_eps: float | None = field(
         default=1e-3,
         metadata={"help": "eps in MeZO"},
@@ -228,7 +223,7 @@ def train(
 
     set_seed(training_args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    Path(training_args.output_dir).mkdir(parents=True)
+    Path(training_args.output_dir).mkdir(parents=True, exist_ok=True)
 
     tokenizer = AutoTokenizer.from_pretrained(model_args.model_name)
     if tokenizer.pad_token is None:
