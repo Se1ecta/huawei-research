@@ -5,7 +5,7 @@ import time
 
 import numpy as np
 import torch
-from transformers import Trainer, TrainingArguments
+from transformers import Any, Trainer, TrainingArguments
 from transformers.trainer_utils import TrainOutput, speed_metrics
 
 
@@ -24,23 +24,26 @@ class MeZoTrainer(Trainer):
     Args:
         args (TrainingArguments): Аргументы тренировки. Должны содержать:
             - zo_eps (float): Масштаб возмущения для zeroth-order (по умолчанию 1e-3)
+    Note: Данная реализация пока только для gradient_accumulation=1
+
     """
 
     def _inner_training_loop(
         self,
-        batch_size: int = None,
-        args: TrainingArguments = None,
-        resume_from_checkpoint=None,
-        trial=None,
-        ignore_keys_for_eval=None,
-    ):
+        batch_size: int,
+        args: TrainingArguments,
+        resume_from_checkpoint=None,  # noqa: ANN001
+        trial: dict[str, Any] = None,
+        ignore_keys_for_eval: list[str] | None = None,
+    ) -> TrainOutput:
+        if args.gradient_accumulation_steps != 1:
+            msg = "Реализвация MezoTrainer поддерживает на данный момент только gradient_accumulation_steps=1!"
+            raise ValueError(msg)
 
         self._train_batch_size = batch_size
         train_dataloader = self.get_train_dataloader()
         len_dataloader = len(train_dataloader)
-        num_update_steps_per_epoch = math.ceil(
-            len_dataloader / args.gradient_accumulation_steps
-        )
+        num_update_steps_per_epoch = math.ceil(len_dataloader / args.gradient_accumulation_steps)
 
         if args.max_steps > 0:
             max_steps = args.max_steps
@@ -59,9 +62,7 @@ class MeZoTrainer(Trainer):
         model = self._wrap_model(self.model_wrapped)
         model.zero_grad()
 
-        self.control = self.callback_handler.on_train_begin(
-            args, self.state, self.control
-        )
+        self.control = self.callback_handler.on_train_begin(args, self.state, self.control)
 
         tr_loss = torch.tensor(0.0, device=args.device)
         self._total_loss_scalar = 0.0
@@ -71,21 +72,15 @@ class MeZoTrainer(Trainer):
         start_time = time.time()
 
         for epoch in range(num_train_epochs):
-            self.control = self.callback_handler.on_epoch_begin(
-                args, self.state, self.control
-            )
+            self.control = self.callback_handler.on_epoch_begin(args, self.state, self.control)
 
             for step, inputs in enumerate(train_dataloader):
                 if step % args.gradient_accumulation_steps == 0:
-                    self.control = self.callback_handler.on_step_begin(
-                        args, self.state, self.control
-                    )
+                    self.control = self.callback_handler.on_step_begin(args, self.state, self.control)
 
                 loss = self.zo_step(model, inputs)
 
-                if args.logging_nan_inf_filter and (
-                    torch.isnan(loss) or torch.isinf(loss)
-                ):
+                if args.logging_nan_inf_filter and (torch.isnan(loss) or torch.isinf(loss)):
                     loss = torch.zeros_like(loss)
 
                 tr_loss += loss
@@ -93,9 +88,7 @@ class MeZoTrainer(Trainer):
                 accumulated_loss_for_logging += loss.item()
                 steps_for_logging += 1
 
-                if (step + 1) % args.gradient_accumulation_steps == 0 or (
-                    step + 1
-                ) == len_dataloader:
+                if (step + 1) % args.gradient_accumulation_steps == 0 or (step + 1) == len_dataloader:
                     self.zo_update(model)
 
                     if self.lr_scheduler is not None:
@@ -106,9 +99,7 @@ class MeZoTrainer(Trainer):
                     self.state.global_step += 1
                     self.state.epoch = epoch + ((step + 1) / len_dataloader)
 
-                    self.control = self.callback_handler.on_step_end(
-                        args, self.state, self.control
-                    )
+                    self.control = self.callback_handler.on_step_end(args, self.state, self.control)
 
                     if self.state.global_step % args.logging_steps == 0:
                         avg_loss = accumulated_loss_for_logging / steps_for_logging
@@ -134,23 +125,15 @@ class MeZoTrainer(Trainer):
                         break
 
                 else:
-                    self.control = self.callback_handler.on_substep_end(
-                        args, self.state, self.control
-                    )
+                    self.control = self.callback_handler.on_substep_end(args, self.state, self.control)
 
-            self.control = self.callback_handler.on_epoch_end(
-                args, self.state, self.control
-            )
+            self.control = self.callback_handler.on_epoch_end(args, self.state, self.control)
 
             if self.state.global_step >= max_steps:
                 break
 
         self._total_loss_scalar += tr_loss.item()
-        train_loss = (
-            self._total_loss_scalar / self.state.global_step
-            if self.state.global_step > 0
-            else 0.0
-        )
+        train_loss = self._total_loss_scalar / self.state.global_step if self.state.global_step > 0 else 0.0
 
         metrics = speed_metrics(
             "train",
@@ -161,9 +144,7 @@ class MeZoTrainer(Trainer):
 
         self.log(metrics, start_time=start_time)
 
-        self.control = self.callback_handler.on_train_end(
-            args, self.state, self.control
-        )
+        self.control = self.callback_handler.on_train_end(args, self.state, self.control)
 
         return TrainOutput(
             self.state.global_step,
@@ -172,13 +153,10 @@ class MeZoTrainer(Trainer):
         )
 
     # ---------- MeZO core ----------
-    def zo_step(self, model, inputs):
+    def zo_step(self, model, inputs) -> torch.Tensor:
         """Оценка градиента методом конечных разностей."""
-
         if not hasattr(self, "named_parameters_to_optim"):
-            self.named_parameters_to_optim = [
-                (n, p) for n, p in model.named_parameters() if p.requires_grad
-            ]
+            self.named_parameters_to_optim = [(n, p) for n, p in model.named_parameters() if p.requires_grad]
 
         self.zo_random_seed = np.random.randint(0, 2**31 - 1)
 
@@ -205,9 +183,8 @@ class MeZoTrainer(Trainer):
 
         return loss1.detach()
 
-    def zo_update(self, model):
+    def zo_update(self, model) -> None:
         """Обновление параметров по накопленному ZO-градиенту."""
-
         if self._zo_accum_steps == 0:
             return
 
@@ -241,12 +218,11 @@ class MeZoTrainer(Trainer):
         self._zo_grad_accum = 0.0
         self._zo_accum_steps = 0
 
-    def _perturb_parameters(self, scaling_factor=1):
+    def _perturb_parameters(self, scaling_factor: int = 1, seed: int = 42) -> None:
         """Добавить εz к параметрам."""
-
         for _, param in self.named_parameters_to_optim:
             generator = torch.Generator(device=param.device)
-            generator.manual_seed(self.zo_random_seed)
+            generator.manual_seed(seed)
 
             z = torch.normal(
                 mean=0.0,
@@ -260,12 +236,10 @@ class MeZoTrainer(Trainer):
             with torch.no_grad():
                 param.add_(z, alpha=scaling_factor * self.args.zo_eps)
 
-    def _forward_loss(self, model, inputs):
+    def _forward_loss(self, model, inputs) -> torch.Tensor:
         """
-        Forward без градиентов.
-        Dropout отключён намеренно для стабильной ZO-оценки.
+        Forward без градиентов. Dropout отключён намеренно для стабильной ZO-оценки.
         """
-
         was_training = model.training
         model.eval()
 
