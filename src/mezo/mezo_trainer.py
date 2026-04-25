@@ -37,6 +37,10 @@ class MeZoTrainer(Trainer):
         ignore_keys_for_eval: list[str] | None = None,
     ) -> TrainOutput:
 
+        if not hasattr(args, "zo_eps"):
+            msg = "Нужно установить параметер `zo_eps` для MeZOTrainer."
+            raise ValueError(msg)
+
         self._train_batch_size = batch_size
         train_dataloader = self.get_train_dataloader()
         len_dataloader = len(train_dataloader)
@@ -80,7 +84,7 @@ class MeZoTrainer(Trainer):
                 if args.logging_nan_inf_filter and (torch.isnan(loss) or torch.isinf(loss)):
                     loss = torch.zeros_like(loss)
 
-                tr_loss += loss
+                tr_loss += loss.detach()
 
                 accumulated_loss_for_logging += loss.item()
                 steps_for_logging += 1
@@ -98,7 +102,7 @@ class MeZoTrainer(Trainer):
 
                     self.control = self.callback_handler.on_step_end(args, self.state, self.control)
 
-                    if self.state.global_step % args.logging_steps == 0:
+                    if self.args.logging_steps > 0 and self.state.global_step % args.logging_steps == 0:
                         avg_loss = accumulated_loss_for_logging / steps_for_logging
                         self.log(
                             {
@@ -107,6 +111,9 @@ class MeZoTrainer(Trainer):
                                 "learning_rate": self._get_learning_rate(),
                             }
                         )
+                        # сброс accumulation
+                        accumulated_loss_for_logging = 0.0
+                        steps_for_logging = 0
 
                     self._maybe_log_save_evaluate(
                         grad_norm=None,
@@ -155,67 +162,58 @@ class MeZoTrainer(Trainer):
         if not hasattr(self, "named_parameters_to_optim"):
             self.named_parameters_to_optim = [(n, p) for n, p in model.named_parameters() if p.requires_grad]
 
-        self.zo_random_seed = np.random.randint(0, 2**31 - 1)
+        if not hasattr(self, "_zo_grad_accum"):
+            self._zo_grad_accum = []
+
+        zo_seed = np.random.randint(0, 2**31 - 1)
 
         # θ + εz
-        self._perturb_parameters(scaling_factor=1)
+        self._perturb_parameters(zo_seed, scaling_factor=1)
         loss1 = self._forward_loss(model, inputs)
 
         # θ - εz
-        self._perturb_parameters(scaling_factor=-2)
+        self._perturb_parameters(zo_seed, scaling_factor=-2)
         loss2 = self._forward_loss(model, inputs)
 
         projected_grad = (loss1 - loss2) / (2 * self.args.zo_eps)
 
         # вернуть параметры
-        self._perturb_parameters(scaling_factor=1)
+        self._perturb_parameters(zo_seed, scaling_factor=1)
 
-        # gradient accumulation
-        if not hasattr(self, "_zo_grad_accum"):
-            self._zo_grad_accum = 0.0
-            self._zo_accum_steps = 0
-
-        self._zo_grad_accum += projected_grad.item()
-        self._zo_accum_steps += 1
+        self._zo_grad_accum.append((projected_grad.item(), zo_seed))
 
         return loss1.detach()
 
     def zo_update(self, model) -> None:
         """Обновление параметров по накопленному ZO-градиенту."""
-        if self._zo_accum_steps == 0:
-            return
-
         lr = self._get_learning_rate()
 
-        projected_grad = self._zo_grad_accum / self._zo_accum_steps
-        projected_grad = max(min(projected_grad, 10.0), -10.0)
+        for projected_grad, seed in self._zo_grad_accum:
+            for name, param in self.named_parameters_to_optim:
+                generator = torch.Generator(device=param.device)
+                generator.manual_seed(seed)
 
-        for name, param in self.named_parameters_to_optim:
-            generator = torch.Generator(device=param.device)
-            generator.manual_seed(self.zo_random_seed)
+                z = torch.normal(
+                    mean=0.0,
+                    std=1.0,
+                    size=param.shape,
+                    generator=generator,
+                    device=param.device,
+                    dtype=param.dtype,
+                )
 
-            z = torch.normal(
-                mean=0.0,
-                std=1.0,
-                size=param.shape,
-                generator=generator,
-                device=param.device,
-                dtype=param.dtype,
-            )
+                grad_estimate = projected_grad * z
 
-            grad_estimate = projected_grad * z
-
-            with torch.no_grad():
-                if any(nd in name.lower() for nd in ("bias", "layernorm")):
-                    param -= lr * grad_estimate
-                else:
-                    param -= lr * (grad_estimate + self.args.weight_decay * param)
+                with torch.no_grad():
+                    if any(nd in name.lower() for nd in ("bias", "layernorm")):
+                        param -= lr * grad_estimate
+                    else:
+                        param -= lr * (grad_estimate + self.args.weight_decay * param)
 
         # сброс accumulation
-        self._zo_grad_accum = 0.0
-        self._zo_accum_steps = 0
+        self._zo_grad_accum.clear()
 
-    def _perturb_parameters(self, scaling_factor: int = 1, seed: int = 42) -> None:
+    def _perturb_parameters(self, seed: int, scaling_factor: int = 1) -> None:
         """Добавить εz к параметрам."""
         for _, param in self.named_parameters_to_optim:
             generator = torch.Generator(device=param.device)

@@ -4,7 +4,7 @@
   - "muon": в Muon идут все 2D-параметры, кроме embed_tokens, lm_head, norm.
   - "hybrid_muon": в Muon идут только 2D-параметры из attention слоёв (содержат "attn").
 Остальные параметры попадают в Adam.
-"""
+"""  # noqa: D205
 
 from transformers import Qwen2Config, Qwen2ForCausalLM
 
@@ -48,12 +48,7 @@ def split_parameters(model, mode):
 
     for name, param in model.named_parameters():
         if mode == "muon":
-            if (
-                param.ndim == 2
-                and "embed_tokens" not in name
-                and "lm_head" not in name
-                and "norm" not in name
-            ):
+            if param.ndim == 2 and "embed_tokens" not in name and "lm_head" not in name and "norm" not in name:
                 muon_params.append((name, param))
             else:
                 adam_params.append((name, param))
