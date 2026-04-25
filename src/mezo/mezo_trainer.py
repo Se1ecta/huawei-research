@@ -187,8 +187,13 @@ class MeZoTrainer(Trainer):
     def zo_update(self, model) -> None:
         """Обновление параметров по накопленному ZO-градиенту."""
         lr = self._get_learning_rate()
+        if len(self._zo_grad_accum) == 0:
+            return
+
+        accum_steps = len(self._zo_grad_accum)
 
         for projected_grad, seed in self._zo_grad_accum:
+            avg_projected_grad = projected_grad / accum_steps
             for name, param in self.named_parameters_to_optim:
                 generator = torch.Generator(device=param.device)
                 generator.manual_seed(seed)
@@ -202,7 +207,7 @@ class MeZoTrainer(Trainer):
                     dtype=param.dtype,
                 )
 
-                grad_estimate = projected_grad * z
+                grad_estimate = avg_projected_grad * z
 
                 with torch.no_grad():
                     if any(nd in name.lower() for nd in ("bias", "layernorm")):
