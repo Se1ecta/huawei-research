@@ -1,13 +1,13 @@
 #!/bin/bash
 
-SCRIPT_PATH="/content/huawei-research/src/train.py"
+SCRIPT_PATH="src/train.py"
 
 python "$SCRIPT_PATH" \
   --model_name Qwen/Qwen2.5-0.5B \
   --optimizer mezo \
   --zo_eps 1e-3 \
-  --per_device_train_batch_size 8 \
-  --gradient_accumulation_steps 2 \
+  --per_device_train_batch_size 2 \
+  --gradient_accumulation_steps 8 \
   --learning_rate 2e-5 \
   --seq_length 512 \
   --num_train_epochs 1 \

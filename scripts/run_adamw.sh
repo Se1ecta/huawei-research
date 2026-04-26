@@ -1,6 +1,6 @@
 #!/bin/bash
 
-SCRIPT_PATH="/content/huawei-research/src/train.py"
+SCRIPT_PATH="src/train.py"
 
 python "$SCRIPT_PATH" \
   --model_name Qwen/Qwen2.5-0.5B \

@@ -1,26 +1,6 @@
-#!/bin/bash
 
-set -e
 
-SEED=42
-MODEL="Qwen/Qwen2.5-0.5B"
-DATASET="openwebtext-100k"
-
-LR=1e-4
-WD=0.01
-BATCH=2
-ACCUM=8
-SEQ_LEN=512
-EPOCHS=1
-WARMUP=0.1
-
-EXP_NAME="muon_lr${LR}_bs${BATCH}_seed${SEED}"
-OUTPUT_DIR="experiments/${EXP_NAME}"
-
-mkdir -p ${OUTPUT_DIR}
-#!/bin/bash
-
-SCRIPT_PATH="/content/huawei-research/src/train.py"
+SCRIPT_PATH="src/train.py"
 
 python "$SCRIPT_PATH" \
   --model_name Qwen/Qwen2.5-0.5B \
