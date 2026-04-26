@@ -7,15 +7,16 @@ python "$SCRIPT_PATH" \
   --optimizer mezo \
   --zo_eps 1e-3 \
   --per_device_train_batch_size 8 \
-  --gradient_accumulation_steps 1 \
-  --learning_rate 5e-5 \
+  --gradient_accumulation_steps 2 \
+  --learning_rate 2e-5 \
   --seq_length 512 \
   --num_train_epochs 1 \
   --lr_scheduler_type cosine \
-  --warmup_ratio 0.01 \
-  --weight_decay 0.05 \
+  --warmup_steps 0.01 \
+  --weight_decay 0 \
   --logging_steps 10 \
-  --push_to_hub False \
+  --logging_strategy="steps" \
+  --push_to_hub True \
   --report_to clearml \
   --seed 42 \
   --output_dir ./Qwen2.5-0.5B_mezo

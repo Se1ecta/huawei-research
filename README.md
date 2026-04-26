@@ -2,11 +2,10 @@
 
 ## 📌 Обзор
 
-Данный проект реализует **полное дообучение (full fine-tuning)** языковой модели **Qwen2.5-0.5B** на датасете **openwebtext-100k** (10k семплов) с использованием четырёх стратегий оптимизации:
+Данный проект реализует **полное дообучение (full fine-tuning)** языковой модели **Qwen2.5-0.5B** на датасете **openwebtext-100k** (были. взяты первые 10k семплов) с использованием трех стратегий оптимизации:
 
 - **AdamW** – классический адаптивный оптимизатор (базовый уровень).
 - **Muon** – новый оптимизатор на основе ортогонализации матриц (обещает 2× ускорение сходимости).
-- **Muon for attnetion matrices ** – параметры проекций внимания (`q_proj, k_proj, v_proj, o_proj`) обучаются с Muon, остальные – с AdamW.
 - **MeZO** *(Challenge)* – zeroth-order оптимизатор, оценивающий градиент без обратного распространения (только два forward-прохода на шаг).
 
 **Цель:** сравнить оптимизаторы по времени обучения, пиковому потреблению памяти, loss и итоговому качеству на стандартных бенчмарках: `PIQA`, `ARC-easy`, `ARC-challenge`, `WinoGrande`, `HellaSwag`.
@@ -124,11 +123,6 @@ python src/train.py \
 bash scripts/run_muon.sh
 ```
 
-### Hybrid Muon (Muon на attention-слоях, AdamW на остальных)
-```bash
-bash scripts/run_muon_hybrid.sh
-```
-
 ### MeZO (Zeroth‑order)
 ```bash
 bash scripts/run_mezo.sh
@@ -180,11 +174,8 @@ bash scripts/run_mezo.sh
 - Исходный код: [Moonlight](https://github.com/MoonshotAI/Moonlight)
 - Особенности: Newton-Schulz итерации для ортогонализации градиента, адаптивное масштабирование
 
-### 3. Muon for attention matrices
-- **Группа Muon**: параметры `q_proj, k_proj, v_proj, o_proj` (все веса внимания)
-- **Группа AdamW**: все остальные параметры (embedding, LM head и тд. )
 
-### 4. MeZO (Zeroth-Order)
+### 3. MeZO (Zeroth-Order)
 - Реализация на основе [Princeton-NLP/MeZO](https://github.com/princeton-nlp/MeZO), адаптированная для `transformers>=4.5`
 - Оценка градиента: `∇L ≈ (L(θ+εz) - L(θ-εz)) / (2ε) * z`
 - Требует два forward-прохода на шаг, **без backward** → экономия памяти на градиентах.
@@ -211,31 +202,35 @@ bash scripts/run_mezo.sh
 | Без fine-tuning      | TBD  | TBD   | TBD   | TBD        | TBD       |
 | + AdamW              | TBD  | TBD   | TBD   | TBD        | TBD       |
 | + Muon               | TBD  | TBD   | TBD   | TBD        | TBD       |
-| + Hybrid             | TBD  | TBD   | TBD   | TBD        | TBD       |
 | + MeZO               | TBD  | TBD   | TBD   | TBD        | TBD       |
 
-*Оценка проведена с помощью `lm_eval --model hf` (git-версия).*
+*Оценка проведена с помощью `lm_eval --model hf`*
 
+### График функции потерь
+
+![loss](docs/loss.png)
+
+### График использования VRAM (gb)
+
+![mem_usage_gb](docs/gpu_0_mem_used_gb.png)
 ---
 
 ## 🛠 Структура проекта
 
 ```
 huawei-research/
+├── docs/                     # документация проекта
 ├── notebooks/
 │   └── ExperimentRun.ipynb   # автоматизированный ноутбук для Colab/Kaggle
 ├── scripts/
 │   ├── run_adamw.sh
 │   ├── run_muon.sh
-│   ├── run_muon_hybrid.sh
 │   └── run_mezo.sh
 ├── src/
 │   ├── train.py                # основной скрипт обучения
 │   ├── optimizers/             # реализации Muon
 │   ├── mezo/                   # реализации Mezo
-
-
 ├── requirements.txt
-├── pyproject.toml              # для Poetry
+├── pyproject.toml
 └── README.md
 ```

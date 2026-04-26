@@ -115,16 +115,6 @@ class MeZoTrainer(Trainer):
                         accumulated_loss_for_logging = 0.0
                         steps_for_logging = 0
 
-                    self._maybe_log_save_evaluate(
-                        grad_norm=None,
-                        tr_loss=tr_loss,
-                        model=model,
-                        trial=trial,
-                        epoch=epoch,
-                        ignore_keys_for_eval=ignore_keys_for_eval,
-                        start_time=start_time,
-                    )
-
                     if self.state.global_step >= max_steps:
                         break
 

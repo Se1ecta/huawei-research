@@ -28,6 +28,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.group.dev.dependencies]
 lm-eval = {git = "https://github.com/EleutherAI/lm-evaluation-harness.git"}
+matplotlib = "^3.10.9"
 
 
 [tool.setuptools.packages.find]
@@ -80,7 +81,7 @@ ignore = [
 "tests/*" = ["D10", "D101", "D103", "S101", "ANN", "PLR2004", "S106"]
 
 [tool.ruff.lint.mccabe]
-max-complexity = 5
+max-complexity = 8
 
 [tool.ruff.lint.pylint]
 max-args = 7

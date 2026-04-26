@@ -3,7 +3,6 @@
 import functools
 import logging
 import operator
-import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -24,6 +23,12 @@ from transformers import (
 
 from mezo.mezo_trainer import MeZoTrainer
 from optimizers.muon import Muon
+from utils import setup_logging
+
+setup_logging()
+
+
+logger = logging.getLogger(__name__)
 
 
 class OptimizerNames(str, Enum):
@@ -77,15 +82,6 @@ class CustomTrainingArguments(TrainingArguments):
     )
 
 
-def setup_logging() -> None:
-    """Настраивает базовое логирование."""
-    logging.basicConfig(
-        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-        level=os.environ.get("LOGLEVEL", "INFO").upper(),
-    )
-
-
 def build_dataset(data_args: DataArguments, tokenizer) -> torch.utils.data.Dataset:  # noqa: ANN001
     """Загружает и подготавливает датасет для языкового моделирования."""
     name2path = {
@@ -133,24 +129,31 @@ def build_muon_optimizer(name: str, model, lr: float, wd: float) -> torch.optim.
     adam_params = []
 
     for n, p in model.named_parameters():
-        if name == OptimizerNames.muon:
-            if p.ndim == 2 and "embed_tokens" not in n and "lm_head" not in n and "norm" not in n:
-                muon_params.append(p)
-            else:
-                adam_params.append(p)
+        if not p.requires_grad:
+            continue
 
-        elif name == OptimizerNames.hybrid_muon:
-            if "attn" in n and p.ndim == 2:
-                muon_params.append(p)
-            else:
-                adam_params.append(p)
+        # Muon применяем только к 2D матрицам (Linear веса)
+        if p.ndim == 2 and "embed_tokens" not in n and "lm_head" not in n and "norm" not in n:
+            muon_params.append(p)
+        else:
+            adam_params.append(p)
 
-    return Muon(
-        muon_params=muon_params,
-        adamw_params=adam_params,
-        lr=lr,
-        wd=wd,
-    )
+    if name == OptimizerNames.muon:
+        return Muon(
+            muon_params=muon_params,
+            lr=lr,
+            wd=wd,
+        )
+    if name == OptimizerNames.hybrid_muon:
+        return Muon(
+            muon_params=muon_params,
+            adamw_params=adam_params,
+            lr=lr,
+            wd=wd,
+        )
+
+    msg = f"Unsupported optimizer name: {name}"
+    raise ValueError(msg)
 
 
 class TrainerWithMuonOptimizer(Trainer):
@@ -198,17 +201,21 @@ def init_clearml_task(
     optimizer_name: OptimizerNames,
     training_args: TrainingArguments,
     data_args: DataArguments,
-) -> Task:
+) -> Task | None:
     """Инициализирует задачу ClearML."""
-    task = Task.init(
-        project_name="Huawei-research",
-        task_name=build_task_name(optimizer_name, training_args, data_args),
-        tags=[
-            optimizer_name,
-            f"lr={training_args.learning_rate:.1e}",
-            f"bs={training_args.per_device_train_batch_size}",
-        ],
-    )
+    try:
+        task = Task.init(
+            project_name="Huawei-research",
+            task_name=build_task_name(optimizer_name, training_args, data_args),
+            tags=[
+                optimizer_name,
+                f"lr={training_args.learning_rate:.1e}",
+                f"bs={training_args.per_device_train_batch_size}",
+            ],
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"ClearML disabled ({e}). Running without tracking.")
+        return None
     return task
 
 
@@ -264,9 +271,6 @@ def train(
 
 
 if __name__ == "__main__":
-    setup_logging()
-    logger = logging.getLogger(__name__)
-
     parser = HfArgumentParser([ModelArguments, DataArguments, ScriptArguments, CustomTrainingArguments])
 
     model_args, data_args, script_args, training_args = parser.parse_args_into_dataclasses()

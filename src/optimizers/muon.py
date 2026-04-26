@@ -26,9 +26,7 @@ def zeropower_via_newtonschulz5(G, steps):
     # Perform the NS iterations
     for _ in range(steps):
         A = X @ X.T
-        B = (
-            b * A + c * A @ A
-        )  # adapted from suggestion by @jxbz, @leloykun, and @YouJiacheng
+        B = b * A + c * A @ A  # adapted from suggestion by @jxbz, @leloykun, and @YouJiacheng
         X = a * X + B @ X
 
     if G.size(0) > G.size(1):
@@ -61,6 +59,7 @@ class Muon(torch.optim.Optimizer):
         adamw_betas: The betas for the internal AdamW.
         adamw_eps: The epsilon for the internal AdamW.
         adamw_wd: The weight decay for the internal AdamW.
+
     """
 
     def __init__(
@@ -76,15 +75,15 @@ class Muon(torch.optim.Optimizer):
         adamw_eps=1e-8,
     ):
 
-        defaults = dict(
-            lr=lr,
-            wd=wd,
-            momentum=momentum,
-            nesterov=nesterov,
-            ns_steps=ns_steps,
-            adamw_betas=adamw_betas,
-            adamw_eps=adamw_eps,
-        )
+        defaults = {
+            "lr": lr,
+            "wd": wd,
+            "momentum": momentum,
+            "nesterov": nesterov,
+            "ns_steps": ns_steps,
+            "adamw_betas": adamw_betas,
+            "adamw_eps": adamw_eps,
+        }
 
         params = list(muon_params)
         adamw_params = list(adamw_params) if adamw_params is not None else []
@@ -108,11 +107,13 @@ class Muon(torch.optim.Optimizer):
         return adjusted_lr
 
     def step(self, closure=None):
-        """Perform a single optimization step.
+        """
+        Perform a single optimization step.
 
         Args:
             closure (Callable, optional): A closure that reevaluates the model
                 and returns the loss.
+
         """
         loss = None
         if closure is not None:
