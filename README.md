@@ -12,7 +12,7 @@
 
 # 📄 Информация для ревьюера
 
-**Контекст:** тестовое задание на позицию *Senior Research Engineer (Hybrid Backpropagation-less Fine-Tuning of LLMs)*.
+**Контекст:** тестовое задание на позицию *Senior Research Engineer*.
 
 ---
 
@@ -87,7 +87,7 @@
 
 ### Требования
 - Python 3.10+
-- GPU с 12+ GB VRAM (рекомендуется T4/V100/A10)
+- GPU с 12+ GB VRAM
 - Установленные CUDA и PyTorch 2.0+
 
 ### Установка
@@ -192,14 +192,13 @@ bash scripts/run_mezo.sh
 ### Как использовать ноутбук:
 
 1. Откройте [Google Colab](https://colab.research.google.com/)  
-2. Загрузите ноутбук: `File → Upload notebook` → выберите `notebooks/run_experiments.ipynb`  
+2. Загрузите ноутбук: `File → Upload notebook` → выберите `notebooks/ExperimentRun.ipynb`  
 3. Включите GPU: `Runtime → Change runtime type → T4 GPU`  
 4. (Рекомендуется) Добавьте секреты:
    - `CLEARML_API_ACCESS_KEY` и `CLEARML_API_SECRET_KEY` (для трекинга)
    - `HF_TOKEN` (опционально, для пуша модели на Hub)  
-5. Запустите все ячейки: `Runtime → Run all`
+5. Запустите ячейки и заполните неоюходимые данные.
 
-Ноутбук сам выполнит клонирование, установку, обучение и оценку. Результаты появятся в папке `outputs/` и в веб-интерфейсе ClearML.
 
 ---
 
@@ -209,7 +208,7 @@ bash scripts/run_mezo.sh
 |---------------------|---------------------------------------|
 | Модель              | `Qwen/Qwen2.5-0.5B`                   |
 | Датасет             | `Elriggs/openwebtext-100k` (10k samples) |
-| Оценка              | `lm-evaluation-harness` (git-версия)  |
+| Оценка              | `lm-evaluation-harness` |
 | Batch size          | 2 (gradient accumulation = 8) → эфф. batch 16 |
 | Эпохи               | 1                                     |
 | Длина последовательности | 512                              |
@@ -240,6 +239,8 @@ bash scripts/run_mezo.sh
 # 📊 Результаты
 
 Эксперименты проводились на **2xNVIDIA T4 (15GB)**, 1 эпоха, 625ыеузы, effective batch size = 16.
+
+Интерпретация результатов представлена в `docs/report.pdf`, здесь отображены только финальные результаты.
 
 ---
 
@@ -322,9 +323,6 @@ huawei-research/
 ├── pyproject.toml
 └── README.md
 ```
-
-Вот максимально краткая версия на русском (≈10 строк):
-
 ---
 
 # ✅ Соответствие техническому заданию
