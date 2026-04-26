@@ -11,6 +11,80 @@
 **Цель:** сравнить оптимизаторы по времени обучения, пиковому потреблению памяти, loss и итоговому качеству на стандартных бенчмарках: `PIQA`, `ARC-easy`, `ARC-challenge`, `WinoGrande`, `HellaSwag`.
 
 ---
+Понял — нужно **в README в самом начале** кратко и чётко указать всю информацию для ревьюера, включая отчёт (LaTeX + PDF), репозиторий, setup и соответствие ТЗ.
+
+Вот готовый блок, который можно вставить **сразу после заголовка README**.
+
+---
+
+Отлично — ссылки на HF модели обязательно нужно вынести в начало README.  
+Это сильно повышает прозрачность и доверие.
+
+Вот обновлённый блок для ревьюера с добавленными ссылками:
+
+---
+
+# 📄 Информация для ревьюера
+
+**Контекст:** тестовое задание на позицию *Senior Research Engineer (Hybrid Backpropagation-less Fine-Tuning of LLMs)*.
+
+---
+
+## 🔗 Материалы
+
+- 📘 LaTeX-отчёт (PDF): `docs/report.pdf`  
+- 📝 Исходник отчёта (LaTeX): `docs/report.tex`  
+- 💻 Код и скрипты обучения: `src/`, `scripts/`  
+- 📊 Логи и графики: `docs/`  
+- 🌐 GitHub-репозиторий: https://github.com/Se1ecta/huawei-research  
+
+---
+
+## 🤗 Обученные модели (Hugging Face Hub)
+
+- **AdamW:**  
+  https://huggingface.co/Neira/Qwen2.5-0.5B_adamw_v2  
+
+- **Muon:**  
+   https://huggingface.co/Neira/Qwen2.5-0.5B_muon_v2_simple  
+   
+
+- **Hybrid Muon+AdamW:** 
+   https://huggingface.co/Neira/Qwen2.5-0.5B_muon_v2 
+  
+
+- **MeZO:**  
+  https://huggingface.co/Neira/Qwen2.5-0.5B_mezo_v2  
+
+---
+
+## 📈 Логи экспериментов (ClearML)
+
+Все эксперименты доступны в ClearML (метрики, логи, конфигурации, использование GPU-памяти):
+
+- **AdamW:**  
+  https://app.clear.ml/projects/e0a00fcf9bd44538a94d4e30a10713a1/experiments/5821023a9f524a60a1dc3eec5a925ae2/output/execution  
+
+- **Muon (simple):**  
+  https://app.clear.ml/projects/e0a00fcf9bd44538a94d4e30a10713a1/experiments/0c9b58d07d234a9d8bd8fbbac8d06010/output/execution  
+
+- **Muon (Hybrid):**  
+  https://app.clear.ml/projects/e0a00fcf9bd44538a94d4e30a10713a1/experiments/a6be468a9d9245d8ab30baccbe1e1ba1/output/execution  
+
+- **MeZO:**  
+  https://app.clear.ml/projects/e0a00fcf9bd44538a94d4e30a10713a1/experiments/9d6bf012b1914e2eab0549d40ac38dfc/output/execution
+
+> ClearML содержит:
+> - графики обучения
+> - step-level loss  
+> - learning rate   
+> - GPU memory usage  
+> - полную конфигурацию запуска  
+
+
+
+
+
 
 ## 📓 Запуск в Google Colab / Kaggle (без локальной установки)
 
@@ -176,35 +250,68 @@ bash scripts/run_mezo.sh
 
 
 ### 3. MeZO (Zeroth-Order)
-- Реализация на основе [Princeton-NLP/MeZO](https://github.com/princeton-nlp/MeZO), адаптированная для `transformers>=4.5`
-- Оценка градиента: `∇L ≈ (L(θ+εz) - L(θ-εz)) / (2ε) * z`
+- Реализация на основе [Princeton-NLP/MeZO](https://github.com/princeton-nlp/MeZO), адаптированная для `transformers>=5.0`
 - Требует два forward-прохода на шаг, **без backward** → экономия памяти на градиентах.
+
 
 ---
 
-## 📊 Результаты
+# 📊 Результаты
 
-> **Примечание:** таблицы будут заполнены после прогона экспериментов. Ниже приведены ожидаемые диапазоны на основе литературы.
+Эксперименты проводились на **2xNVIDIA T4 (15GB)**, 1 эпоха, 625ыеузы, effective batch size = 16.
 
-### Время и память (1 эпоха, 10k семплов, batch=16 effective)
+---
 
-| Оптимизатор   | Время (мин) | Пик памяти (GB) |
-|---------------|-------------|-----------------|
-| AdamW         | TBD         | TBD             |
-| Muon          | TBD         | TBD             |
-| Hybrid        | TBD         | TBD             |
-| MeZO          | TBD         | TBD (ожидается ~30% меньше AdamW) |
+### Сводная статистика loss
 
-### Accuracy (%) на задачах reasoning
+| Optimizer | Initial | Min | Max | Final |
+|------------|---------|------|------|--------|
+| **AdamW** | 2.985 | **2.872** | 3.020 | 2.916 |
+| **Muon** | 2.987 | 2.871 | **3.000** | **2.915** |
+| Hybrid (Muon+AdamW) | 2.987 | 2.878 | 3.014 | 2.923 |
+| MeZO | 3.080 | 3.057 | 3.705 | 3.675 |
 
-| Модель / Оптимизатор | PIQA | ARC-e | ARC-c | WinoGrande | HellaSwag |
-|----------------------|------|-------|-------|------------|-----------|
-| Без fine-tuning      | TBD  | TBD   | TBD   | TBD        | TBD       |
-| + AdamW              | TBD  | TBD   | TBD   | TBD        | TBD       |
-| + Muon               | TBD  | TBD   | TBD   | TBD        | TBD       |
-| + MeZO               | TBD  | TBD   | TBD   | TBD        | TBD       |
+---
 
-*Оценка проведена с помощью `lm_eval --model hf`*
+## Эффективность обучения
+
+| Optimizer | Final Loss | Time (hrs) | Peak Memory (GB) |
+|------------|------------|------------|------------------|
+| AdamW | 2.916 | 2.5 | 8.705 |
+| Muon | 2.915 | 3.2 | 7.660 |
+| Hybrid | 2.923 | 3.0 | 8.240 |
+| MeZO | 3.675 | **1.7** | **7.479** |
+
+---
+
+#### Время обучения
+
+- AdamW — 2.5 часа  
+- Muon — 3.2 часа (+28%)  
+- Hybrid — 3.0 часа  
+- MeZO — 1.7 часа (самый быстрый)
+
+---
+
+# Downstream Task Performance
+
+Оценка проводилась через `lm-evaluation-harness` (zero-shot).
+
+## Zero-shot Accuracy
+
+| Model | PIQA | ARC-E | ARC-C | WinoGrande | HellaSwag | Avg |
+|--------|------|--------|--------|------------|------------|--------|
+| Base (Qwen2.5-0.5B) | 0.7051 | 0.6465 | 0.2910 | 0.5643 | 0.4059 | 0.5226 |
+| AdamW | 0.7035 | 0.6667 | 0.2961 | 0.5683 | 0.3982 | 0.5266 |
+| Muon | 0.7029 | 0.6654 | 0.2909 | 0.5674 | 0.3989 | 0.5251 |
+| Hybrid | 0.7013 | 0.6671 | 0.3003 | 0.5596 | 0.4006 | 0.5258 |
+| MeZO | 0.6382 | 0.5370 | 0.2619 | 0.5351 | 0.3592 | 0.4663 |
+
+---
+
+---
+
+
 
 ### График функции потерь
 
@@ -234,3 +341,20 @@ huawei-research/
 ├── pyproject.toml
 └── README.md
 ```
+
+Вот максимально краткая версия на русском (≈10 строк):
+
+---
+
+# ✅ Соответствие техническому заданию
+
+- Выполнен **full fine-tuning** модели `Qwen2.5-0.5B`
+- Датасет: `openwebtext-100k` (использован поднабор 10k из‑за ограничений вычислительной среды и времени использования)  
+- Реализованы оптимизаторы: **AdamW, Muon, Hybrid (Muon+AdamW), MeZO**   
+- Метрики: **training loss, время обучения, пик использования GPU-памяти**  
+- Оценка через **LM Evaluation Harness** (PIQA, ARC-E, ARC-C, WinoGrande, HellaSwag)  
+- Логирование loss на каждом шаге и построение графиков (ClearML)  
+- Скрипты для воспроизводимости
+- Подготовлен отчёт в LaTeX с анализом результатов  
+- Код опубликован в публичном GitHub-репозитории  
+---
