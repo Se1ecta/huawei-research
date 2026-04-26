@@ -28,35 +28,31 @@ All experiments are conducted in the regime of full fine-tuning, where all model
 
 \subsection{AdamW}
 
-\subsection{AdamW}
-
 AdamW~\cite{loshchilov2017adamw} extends the Adam optimizer by 
 \emph{decoupling} weight decay from the adaptive gradient update. 
 At each training step $t$, given gradient $g_t = \nabla_\theta \mathcal{L}(\theta_t)$, 
 the first and second moment estimates are updated as:
 
-\begin{align}
-m_t &= \beta_1 m_{t-1} + (1 - \beta_1) g_t \\
-v_t &= \beta_2 v_{t-1} + (1 - \beta_2) g_t^2
-\end{align}
-
-Bias-corrected moment estimates are then computed:
-
-\begin{align}
-\hat{m}_t &= \frac{m_t}{1 - \beta_1^t} \\
-\hat{v}_t &= \frac{v_t}{1 - \beta_2^t}
-\end{align}
-
-The parameter update rule is:
+\begin{equation}
+m_t = \beta_1 m_{t-1} + (1 - \beta_1) g_t
+\end{equation}
 
 \begin{equation}
-\theta_{t+1}
-=
-\theta_t
--
-\eta \frac{\hat{m}_t}{\sqrt{\hat{v}_t} + \epsilon}
--
-\eta \lambda \theta_t
+v_t = \beta_2 v_{t-1} + (1 - \beta_2) g_t^2
+\end{equation}
+
+\begin{equation}
+\hat{m}_t = \frac{m_t}{1 - \beta_1^t}
+\end{equation}
+
+\begin{equation}
+\hat{v}_t = \frac{v_t}{1 - \beta_2^t}
+\end{equation}
+
+\begin{equation}
+\theta_{t+1} = \theta_t 
+- \eta \frac{\hat{m}_t}{\sqrt{\hat{v}_t} + \epsilon}
+- \eta \lambda \theta_t
 \end{equation}
 
 where $\eta$ is the learning rate, $\lambda$ is the weight decay coefficient, 
@@ -82,21 +78,38 @@ where $G_t$ is the momentum-accumulated gradient and NewtonSchulz$(\cdot)$ denot
 
 \subsection{MeZO}
 
-MeZO (Memory-efficient Zeroth-Order Optimization)~\cite{malladi2023mezo} is a gradient-free optimization method that estimates directional derivatives using forward passes only, eliminating the need for backpropagation.
+MeZO (Memory-efficient Zeroth-Order Optimization) \cite{malladi2023mezo}
+is based on the classical Simultaneous Perturbation Stochastic Approximation (SPSA) gradient estimator. Unlike first-order methods, MeZO does not rely on backpropagation and instead estimates gradients using forward evaluations only.
 
-At each step, a random perturbation direction $z \sim \mathcal{N}(0, I)$ is sampled, and the directional derivative is approximated via finite differences:
-
-\begin{equation}
-\hat{g}_t \approx \frac{\mathcal{L}(\theta_t + \epsilon z) - \mathcal{L}(\theta_t - \epsilon z)}{2\epsilon} \cdot z
-\end{equation}
-
-where $\epsilon$ is a small perturbation scalar and $\mathcal{L}$ denotes the loss function. Parameters are then updated as:
+Given parameters $\theta \in \mathbb{R}^d$ and a minibatch $\mathcal{B}$, a random perturbation vector $z \sim \mathcal{N}(0, I_d)$ is sampled. The SPSA gradient estimator is:
 
 \begin{equation}
-\theta_{t+1} = \theta_t - \eta \hat{g}_t
+\hat{\nabla}\mathcal{L}(\theta; \mathcal{B}) =
+\frac{
+\mathcal{L}(\theta + \epsilon z; \mathcal{B})
+-
+\mathcal{L}(\theta - \epsilon z; \mathcal{B})
+}
+{2\epsilon}
+\, z
+\label{eq:spsa}
 \end{equation}
 
-This approach substantially reduces memory consumption by avoiding storage of gradients and intermediate activations. However, it introduces variance in gradient estimation and requires two forward passes per update, doubling computational cost per step.
+where $\epsilon$ is a small perturbation scale. The parameter update is then given by:
+
+\begin{equation}
+\theta_{t+1}
+=
+\theta_t
+-
+\eta_t
+\hat{\nabla}\mathcal{L}(\theta_t; \mathcal{B}_t).
+\label{eq:mezo_update}
+\end{equation}
+
+Each SPSA estimate requires two forward passes through the model. Unlike standard zeroth-order implementations, which explicitly store the perturbation vector $z$, MeZO uses an in-place implementation that reconstructs $z$ via a fixed random seed. This allows the method to achieve a memory footprint equivalent to inference-time memory, since no gradient tensors or optimizer states are stored.
+
+While MeZO eliminates backward propagation and gradient storage, the gradient estimate has higher variance compared to first-order methods, which may negatively impact convergence stability.
 
 \section{Experimental Setup}
 
@@ -170,11 +183,11 @@ The Muon optimizer was integrated from the Moonlight repository~\cite{moonshot20
 Two Muon-based configurations were evaluated. In the \textbf{pure Muon} setting, Muon was applied to all 2D weight matrices (229,638,144 parameters, 59.60\% of total parameters), while the remaining parameters were left unchanged. In the \textbf{hybrid Muon+AdamW} configuration, Muon was applied to the same subset of matrix parameters (59.60\%), and the remaining 155,644,928 parameters (40.40\%) were optimized using AdamW.
 
 The original implementation includes the following caveats:
-\begin{quote}
-\textit{``We believe this optimizer is unlikely to work well for training with small batch size. 
 
-We believe it may not work well for finetuning pretrained models, but we haven't tested this.''}
-\end{quote}
+\begin{itemize}
+\item ``We believe it may not work well for finetuning pretrained models.''
+\item ``We believe this optimizer is unlikely to work well with small batch sizes.''
+\end{itemize}
 
 \subsection{MeZO Implementation}
 
@@ -292,9 +305,7 @@ MeZO  & 0.6382 & 0.5370 & 0.2619 & 0.5351 & 0.3592 & 0.4663 \\
     \item MeZO underperforms substantially, showing a 5.6 percentage point drop relative to the base model, consistent across all tasks and aligned with its degraded training convergence.
 \end{itemize}
 
-Overall, downstream differences between AdamW, Muon and Hybrid (AdamW+Muon) remain negligible, while MeZO exhibits clear degradation. The marginal improvements over the base model suggest that short-horizon full fine-tuning on a 10k subset provides limited task-level benefit in this regime.
-
-The absence of downstream improvements suggests that short-horizon full fine-tuning on a small generic corpus may not enhance zero-shot reasoning performance. This behavior may reflect mild catastrophic forgetting or insufficient dataset scale to induce beneficial adaptation. Consequently, the downstream evaluation primarily reflects differences in optimization stability rather than meaningful task-level gains.
+Downstream differences among AdamW, Muon, and Hybrid Muon+AdamW remain negligible. While MeZO exhibits clear degradation. The marginal improvements over the base model suggest that short-horizon full fine-tuning on a 10k subset provides limited task-level benefit in this regime.
 
 \section{Discussion}
 
