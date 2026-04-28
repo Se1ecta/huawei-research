@@ -107,8 +107,6 @@ cd huawei-research
 pip install -r requirements.txt
 ```
 
-Добавим в README раздел про настройку переменных окружения через `.env` файл. В текущей версии проекта, вероятно, присутствует файл `.env.example` с шаблоном для `CLEARML_API_ACCESS_KEY`, `CLEARML_API_SECRET_KEY`, `HF_TOKEN` и т.д. Пользователь должен скопировать его и заполнить.
-
 
 ## 🔐 Настройка переменных окружения
 
